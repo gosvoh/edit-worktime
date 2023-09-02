@@ -1,37 +1,39 @@
 "use client";
 
-import InfiniteCanvasConstructor, {
-  InfiniteCanvas,
-  InfiniteCanvasRenderingContext2D,
-} from "ef-infinite-canvas";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Excalidraw,
+  restore,
+  restoreLibraryItems,
+  restoreAppState,
+  restoreElements,
+  serializeAsJSON,
+  serializeLibraryAsJSON,
+} from "@excalidraw/excalidraw";
+import type { LibraryItem } from "@excalidraw/excalidraw/types/types";
+import { useEffect, useState } from "react";
 
 export default function Editor() {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [ctx, setCtx] = useState<InfiniteCanvasRenderingContext2D | null>(null);
+  const [libraryItems, setLibraryItems] = useState<LibraryItem[]>();
 
   useEffect(() => {
-    if (!ctx) return;
+    const libJson = localStorage.getItem("libraryItems");
+    if (!libJson) return;
+    const libObj = JSON.parse(libJson);
+    const lib = restoreLibraryItems(libObj, "unpublished");
+    setLibraryItems(lib);
+    console.log(lib);
+  }, []);
 
-    // Set line width
-    ctx!.lineWidth = 10;
-
-    // Wall
-    ctx!.strokeRect(75, 140, 150, 110);
-
-    // Door
-    ctx!.fillRect(130, 190, 40, 60);
-
-    // Roof
-    ctx!.beginPath();
-    ctx!.moveTo(50, 140);
-    ctx!.lineTo(150, 60);
-    ctx!.lineTo(250, 140);
-    ctx!.closePath();
-    ctx!.stroke();
-  }, [ctx]);
+  if (!document) return <></>;
 
   return (
-    <canvas className="editor" ref={canvasRef} width="100vw" height="100vh" />
+    <div className="editor">
+      <Excalidraw
+        initialData={{ libraryItems }}
+        onLibraryChange={(items) =>
+          localStorage.setItem("libraryItems", serializeLibraryAsJSON(items))
+        }
+      />
+    </div>
   );
 }
