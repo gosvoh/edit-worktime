@@ -1,146 +1,113 @@
 "use client";
 
+import { saveElements, saveLibrary } from "@/lib/actions";
 import {
   Excalidraw,
-  restore,
-  restoreLibraryItems,
-  restoreAppState,
-  restoreElements,
-  serializeAsJSON,
-  serializeLibraryAsJSON,
-  WelcomeScreen,
   MainMenu,
-  loadFromBlob,
+  THEME,
+  WelcomeScreen,
+  restoreElements,
+  restoreLibraryItems,
+  mutateElement,
 } from "@excalidraw/excalidraw";
+import { NonDeletedExcalidrawElement } from "@excalidraw/excalidraw/types/element/types";
 import {
-  type ExcalidrawAPIRefValue,
-  type LibraryItem,
-  type LibraryItems,
-  type AppState,
-  BinaryFiles,
+  ExcalidrawImperativeAPI,
+  LibraryItems,
 } from "@excalidraw/excalidraw/types/types";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  Dispatch,
-  SetStateAction,
-} from "react";
-import type { ExcalidrawElement } from "@excalidraw/excalidraw/types/element/types";
-import { useDebouncedCallback } from "use-debounce";
+import { useLocalStorageValue } from "@react-hookz/web";
+import { LanguagesIcon, LogOutIcon } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { v4 as uuid } from "uuid";
 
-function useLocalStorage<T>(
-  key: string,
-  defaultValue: T
-): { get: () => T; set: (value: T) => void } {
-  return {
-    get: () => {
-      try {
-        const item = JSON.parse(localStorage.getItem(key)!);
-        return item;
-      } catch {
-        return defaultValue;
-      }
-    },
-    set: (value: T) => localStorage.setItem(key, JSON.stringify(value)),
-  };
-}
-
-export default function Editor() {
-  // const [editor, setEditor] = useState<ExcalidrawAPIRefValue | null>(null);
-  const [language, setLanguage] = useState<"en-US" | "ru-RU">("en-US");
-  const ref = useRef<ExcalidrawAPIRefValue>(null);
-  const libraryItems = useLocalStorage<LibraryItems>("libraryItems", []);
-  const [appState, setAppState] = useState<AppState>();
-  const [elements, setElements] = useState<readonly ExcalidrawElement[]>([]);
-  const [isReady, setIsReady] = useState(false);
-  const setData = useDebouncedCallback(
-    (
-      newElements: readonly ExcalidrawElement[],
-      newAppState: AppState & { [key: string]: any }
-    ) => {
-      const filteredElements = newElements.filter((el) => !el.isDeleted);
-      if (elements.length !== filteredElements.length) {
-        const wtf = filteredElements.filter((el) => !elements.includes(el));
-        ref.current?.readyPromise?.then((ed) => {});
-        console.log("newElements", wtf);
-      }
-      setElements(() => filteredElements);
-      const state = JSON.parse(JSON.stringify(newAppState));
-      Object.keys(state).forEach((k) => {
-        if (
-          ![
-            "gridSize",
-            "viewBackgroundColor",
-            "isBindingEnabled",
-            "theme",
-          ].includes(k)
-        )
-          delete state[k];
-      });
-
-      localStorage.setItem(
-        "appData",
-        JSON.stringify({
-          type: "excalidraw",
-          version: 2,
-          source: "http://localhost:3000",
-          elements: filteredElements,
-          appState: state,
-        })
-      );
-    },
-    500
+export default function Editor(props: {
+  elements: readonly NonDeletedExcalidrawElement[];
+  library: LibraryItems;
+}) {
+  const [api, setApi] = useState<ExcalidrawImperativeAPI>();
+  const locale = useLocalStorageValue<"ru" | "en">("locale", {
+    defaultValue: "en",
+  });
+  const theme = useLocalStorageValue<(typeof THEME)[keyof typeof THEME]>(
+    "theme",
+    { defaultValue: THEME.DARK }
   );
-
-  type Data = {
-    appState: AppState;
-    elements: readonly ExcalidrawElement[];
-    source: string;
-    type: string;
-    version: number;
-  };
+  const router = useRouter();
+  const [elementsLength, setElementsLength] = useState(props.elements.length);
 
   useEffect(() => {
-    try {
-      const dataJson = localStorage.getItem("appData");
-      if (!dataJson) return;
-
-      const data: Data = JSON.parse(dataJson);
-      if (data.type !== "excalidraw") return;
-
-      setAppState(data.appState);
-      setElements(data.elements);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsReady(true);
-    }
-  }, []);
-
-  if (!isReady) return <div className="editor">Loading...</div>;
+    const interval = setInterval(
+      async () =>
+        await saveElements(JSON.stringify(api?.getSceneElements() ?? [])),
+      10000
+    );
+    return () => clearInterval(interval);
+  }, [api]);
 
   return (
     <div className="editor">
       <Excalidraw
-        ref={ref}
-        initialData={{
-          libraryItems: libraryItems.get(),
-          elements,
-          appState,
-        }}
+        autoFocus
         gridModeEnabled
-        onLibraryChange={(items) => {
-          libraryItems.set(items);
+        objectsSnapModeEnabled
+        isCollaborating={false}
+        langCode={locale.value === "en" ? "en-US" : "ru-RU"}
+        theme={theme.value}
+        UIOptions={{
+          tools: { image: false },
+          canvasActions: { toggleTheme: true },
         }}
-        onChange={(newElements, newAppState, newFiles) => {
-          setData(newElements, newAppState);
+        excalidrawAPI={setApi}
+        initialData={{
+          elements: restoreElements(props.elements, undefined),
+          libraryItems: restoreLibraryItems(props.library, "unpublished"),
         }}
-        langCode={language}
+        onChange={async (elements, appState, files) => {
+          if (appState.theme !== theme.value) theme.set(appState.theme);
+          const nonDeletedElements = elements.filter((x) => !x.isDeleted);
+          if (nonDeletedElements.length !== elementsLength) {
+            const customElements = nonDeletedElements.filter(
+              (x) => x.customData?.id === "-1"
+            );
+            if (customElements.length !== 0 && customElements.length !== 6) {
+              customElements.forEach((element) => {
+                mutateElement(element, { isDeleted: true });
+              });
+              api?.updateScene({
+                elements: nonDeletedElements.filter((x) => !x.isDeleted),
+              });
+            }
+            if (customElements.length === 6) {
+              const newId = uuid();
+              customElements.forEach((element) => {
+                mutateElement(element, {
+                  customData: { ...element.customData, id: `${newId}` },
+                });
+              });
+            }
+
+            await saveElements(JSON.stringify(nonDeletedElements));
+            setElementsLength(nonDeletedElements.length);
+          }
+        }}
+        onLibraryChange={async (library) =>
+          await saveLibrary(JSON.stringify(library))
+        }
       >
-        <WelcomeScreen />
+        <WelcomeScreen>
+          <WelcomeScreen.Hints.HelpHint />
+          <WelcomeScreen.Hints.MenuHint />
+          <WelcomeScreen.Hints.ToolbarHint />
+          <WelcomeScreen.Center>
+            <WelcomeScreen.Center.Logo />
+            <WelcomeScreen.Center.Heading>
+              {locale.value === "en"
+                ? "Faculty of Biotechnologies ITMO University"
+                : "Факультет Биотехнологий Университета ИТМО"}
+            </WelcomeScreen.Center.Heading>
+          </WelcomeScreen.Center>
+        </WelcomeScreen>
         <MainMenu>
           <MainMenu.DefaultItems.SaveAsImage />
           <MainMenu.DefaultItems.Help />
@@ -148,12 +115,25 @@ export default function Editor() {
           <MainMenu.Separator />
           <MainMenu.DefaultItems.ToggleTheme />
           <MainMenu.DefaultItems.ChangeCanvasBackground />
+          <MainMenu.Separator />
           <MainMenu.Item
-            onSelect={() =>
-              setLanguage((val) => (val === "en-US" ? "ru-RU" : "en-US"))
+            icon={<LanguagesIcon />}
+            onSelect={() => locale.set(locale.value === "en" ? "ru" : "en")}
+          >
+            {locale.value === "en"
+              ? "Сменить язык на русский"
+              : "Change locale to english"}
+          </MainMenu.Item>
+          <MainMenu.Separator />
+          <MainMenu.Item
+            icon={<LogOutIcon />}
+            onSelect={async () =>
+              await fetch("/logout", { method: "POST" }).finally(() =>
+                router.refresh()
+              )
             }
           >
-            {language}
+            Logout
           </MainMenu.Item>
         </MainMenu>
       </Excalidraw>
