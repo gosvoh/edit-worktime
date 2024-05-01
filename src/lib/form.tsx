@@ -27,7 +27,7 @@ export function Form({
     <form action={formAction}>
       {children}
       <Submit />
-      <p>{state.error}</p>
+      <p className="error">{state.error}</p>
     </form>
   );
 }

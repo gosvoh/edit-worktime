@@ -12,7 +12,7 @@ export default async function Login() {
       <h1>Sign in</h1>
       <Form action={login}>
         <div>
-          <label htmlFor="username">Username</label>
+          <label htmlFor="username">Username:</label>
           <input
             minLength={3}
             maxLength={31}
@@ -23,7 +23,7 @@ export default async function Login() {
           />
         </div>
         <div>
-          <label htmlFor="password">Username</label>
+          <label htmlFor="password">Password:</label>
           <input
             minLength={6}
             maxLength={255}

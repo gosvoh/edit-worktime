@@ -23,7 +23,7 @@ export default async function Register() {
           />
         </div>
         <div>
-          <label htmlFor="password">Username</label>
+          <label htmlFor="password">Password</label>
           <input
             minLength={6}
             maxLength={255}
