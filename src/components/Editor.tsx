@@ -9,17 +9,35 @@ import {
   restoreElements,
   restoreLibraryItems,
   mutateElement,
+  getNonDeletedElements,
+  newElementWith,
 } from "@excalidraw/excalidraw";
-import { NonDeletedExcalidrawElement } from "@excalidraw/excalidraw/types/element/types";
 import {
+  NonDeletedExcalidrawElement,
+  ExcalidrawElement,
+  ExcalidrawTextElement,
+} from "@excalidraw/excalidraw/types/element/types";
+import {
+  AppState,
   ExcalidrawImperativeAPI,
   LibraryItems,
 } from "@excalidraw/excalidraw/types/types";
-import { useLocalStorageValue } from "@react-hookz/web";
+import { useDebouncedCallback, useLocalStorageValue } from "@react-hookz/web";
 import { LanguagesIcon, LogOutIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { v4 as uuid } from "uuid";
+
+enum ElementTypes {
+  containerName = "containerName",
+  name = "name",
+  containerTime = "containerTime",
+  containerScale = "containerScale",
+  scale = "scale",
+  containerWorkTime = "containerWorkTime",
+  containerBurden = "containerBurden",
+  burden = "burden",
+}
 
 export default function Editor(props: {
   elements: readonly NonDeletedExcalidrawElement[];
@@ -35,15 +53,224 @@ export default function Editor(props: {
   );
   const router = useRouter();
   const [elementsLength, setElementsLength] = useState(props.elements.length);
+  const currentEditingElementsRef = useRef<ExcalidrawElement[]>([]);
+  const lastEditedElementIdRef = useRef("");
+  const debouncedSave = useDebouncedCallback(
+    () => {
+      saveElements(JSON.stringify(api?.getSceneElements() ?? [], null, 2));
+    },
+    [api],
+    1000,
+    10000
+  );
 
-  useEffect(() => {
-    const interval = setInterval(
-      async () =>
-        await saveElements(JSON.stringify(api?.getSceneElements() ?? [])),
-      10000
-    );
-    return () => clearInterval(interval);
-  }, [api]);
+  useEffect(
+    () => setElementsLength(props.elements.length),
+    [props.elements.length]
+  );
+
+  const onResize = useCallback(
+    (gridSize: number | null) => {
+      debouncedSave();
+
+      const scaleElement = currentEditingElementsRef.current.find(
+        (x) => x.customData!.type === ElementTypes.scale
+      ) as ExcalidrawTextElement;
+      const burdenElement = currentEditingElementsRef.current.find(
+        (x) => x.customData!.type === ElementTypes.burden
+      ) as ExcalidrawTextElement;
+      const containerWorkTime = currentEditingElementsRef.current.find(
+        (x) => x.customData!.type === ElementTypes.containerWorkTime
+      )!;
+
+      const scale = Number(scaleElement.text.replace(/\D/g, ""));
+
+      const newWorkTimeValue = String(
+        Math.round(
+          (containerWorkTime.height * containerWorkTime.width * scale) /
+            Math.pow(gridSize ?? 20, 2)
+        )
+      );
+
+      if (burdenElement.text !== newWorkTimeValue) {
+        api?.updateScene({
+          elements: [
+            ...api
+              .getSceneElementsIncludingDeleted()
+              .filter((x) => x.id !== burdenElement.id),
+            newElementWith(burdenElement, {
+              text: newWorkTimeValue,
+              originalText: newWorkTimeValue,
+            }),
+          ],
+        });
+      }
+    },
+    [api, debouncedSave]
+  );
+
+  const getElementsByCustomId = useCallback(
+    (elements: readonly NonDeletedExcalidrawElement[], id: string) =>
+      elements.filter((x) => x.customData?.id === id),
+    []
+  );
+
+  const onScaleChange = useCallback(
+    (
+      appState: AppState,
+      nonDeletedElements: readonly NonDeletedExcalidrawElement[]
+    ) => {
+      const scaleElement =
+        lastEditedElementIdRef.current !== ""
+          ? (nonDeletedElements.find(
+              (x) => x.id === lastEditedElementIdRef.current
+            ) as ExcalidrawTextElement | undefined)
+          : undefined;
+      if (
+        appState.editingElement?.customData?.type !== ElementTypes.scale &&
+        scaleElement?.customData?.type !== ElementTypes.scale
+      )
+        return;
+
+      debouncedSave();
+
+      if (
+        appState.editingElement &&
+        lastEditedElementIdRef.current !== appState.editingElement.id
+      )
+        lastEditedElementIdRef.current = appState.editingElement.id;
+
+      if (appState.editingElement || !scaleElement) return;
+
+      let newValue = scaleElement.text.replace(/\D/g, "");
+      if (!newValue) newValue = "1";
+      const customElements = getElementsByCustomId(
+        nonDeletedElements,
+        scaleElement.customData!.id
+      );
+      const burdenElement = customElements.find(
+        (x) => x.customData!.type === ElementTypes.burden
+      ) as ExcalidrawTextElement;
+      const containerWorkTime = customElements.find(
+        (x) => x.customData!.type === ElementTypes.containerWorkTime
+      )!;
+      const newWorkTimeValue = Math.round(
+        (containerWorkTime.height *
+          containerWorkTime.width *
+          Number(newValue)) /
+          Math.pow(appState.gridSize ?? 20, 2)
+      );
+
+      lastEditedElementIdRef.current = "";
+
+      api?.updateScene({
+        elements: [
+          ...nonDeletedElements.filter((x) => {
+            if (x.id === scaleElement.id) return false;
+            if (x.id === burdenElement.id) return false;
+            return true;
+          }),
+          {
+            ...scaleElement,
+            text: `x${newValue}`,
+            originalText: `x${newValue}`,
+          },
+          {
+            ...burdenElement,
+            text: `${newWorkTimeValue}`,
+            originalText: `${newWorkTimeValue}`,
+          },
+        ],
+      });
+    },
+    [debouncedSave, getElementsByCustomId, api]
+  );
+
+  const onInsertDelete = useCallback(
+    async (nonDeletedElements: readonly NonDeletedExcalidrawElement[]) => {
+      if (!api) return;
+      debouncedSave();
+
+      const customElements = Object.groupBy(
+        nonDeletedElements.filter((x) => x.customData?.id),
+        (x) => x.customData?.id
+      );
+
+      Object.entries(customElements).forEach(([id, customElements]) => {
+        if (customElements!.length !== 0 && customElements!.length !== 8)
+          api.updateScene({
+            elements: api
+              .getSceneElementsIncludingDeleted()
+              .filter((x) => !customElements!.includes(x)),
+          });
+
+        if (customElements!.length === 8 && id === "-1") {
+          const newId = uuid();
+          customElements!.forEach((element) => {
+            mutateElement(element, {
+              customData: { ...element.customData, id: `${newId}` },
+            });
+          });
+        }
+      });
+
+      debouncedSave();
+      setElementsLength(
+        getNonDeletedElements(api.getSceneElements() ?? []).length
+      );
+    },
+    [api, debouncedSave, setElementsLength]
+  );
+
+  const onChange = useCallback(
+    (elements: readonly ExcalidrawElement[], appState: AppState) => {
+      if (appState.theme !== theme.value) theme.set(appState.theme);
+
+      const nonDeletedElements = getNonDeletedElements(elements);
+
+      if (nonDeletedElements.length !== elementsLength) {
+        console.log(
+          "nonDeletedElements.length !== elementsLength",
+          nonDeletedElements.length,
+          elementsLength
+        );
+        onInsertDelete(nonDeletedElements);
+      }
+
+      if (appState.resizingElement?.customData) {
+        const customElements = getElementsByCustomId(
+          nonDeletedElements,
+          appState.resizingElement.customData.id
+        );
+
+        if (customElements.length === 8) {
+          if (currentEditingElementsRef.current.length === 0)
+            currentEditingElementsRef.current = customElements;
+          if (
+            currentEditingElementsRef.current[0].customData?.id !==
+            appState.resizingElement.customData.id
+          )
+            currentEditingElementsRef.current = customElements;
+        } else currentEditingElementsRef.current = [];
+      } else {
+        if (currentEditingElementsRef.current.length === 8)
+          onResize(appState.gridSize);
+        currentEditingElementsRef.current = [];
+      }
+
+      onScaleChange(appState, nonDeletedElements);
+    },
+    [
+      elementsLength,
+      getElementsByCustomId,
+      onInsertDelete,
+      onResize,
+      onScaleChange,
+      theme,
+    ]
+  );
+
+  useEffect(() => api?.onChange(onChange), [api, onChange]);
 
   return (
     <div className="editor">
@@ -63,36 +290,8 @@ export default function Editor(props: {
           elements: restoreElements(props.elements, undefined),
           libraryItems: restoreLibraryItems(props.library, "unpublished"),
         }}
-        onChange={async (elements, appState, files) => {
-          if (appState.theme !== theme.value) theme.set(appState.theme);
-          const nonDeletedElements = elements.filter((x) => !x.isDeleted);
-          if (nonDeletedElements.length !== elementsLength) {
-            const customElements = nonDeletedElements.filter(
-              (x) => x.customData?.id === "-1"
-            );
-            if (customElements.length !== 0 && customElements.length !== 6) {
-              customElements.forEach((element) => {
-                mutateElement(element, { isDeleted: true });
-              });
-              api?.updateScene({
-                elements: nonDeletedElements.filter((x) => !x.isDeleted),
-              });
-            }
-            if (customElements.length === 6) {
-              const newId = uuid();
-              customElements.forEach((element) => {
-                mutateElement(element, {
-                  customData: { ...element.customData, id: `${newId}` },
-                });
-              });
-            }
-
-            await saveElements(JSON.stringify(nonDeletedElements));
-            setElementsLength(nonDeletedElements.length);
-          }
-        }}
-        onLibraryChange={async (library) =>
-          await saveLibrary(JSON.stringify(library))
+        onLibraryChange={(library) =>
+          saveLibrary(JSON.stringify(library, null, 2))
         }
       >
         <WelcomeScreen>

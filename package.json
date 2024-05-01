@@ -15,28 +15,28 @@
   },
   "dependencies": {
     "@auth/core": "^0.27.0",
-    "@excalidraw/excalidraw": "^0.x.x",
+    "@excalidraw/excalidraw": "latest",
     "@lucia-auth/adapter-sqlite": "^3.0.0",
-    "@react-hookz/web": "^24.x.x",
-    "@types/node": "^20.3.1",
-    "@types/react": "^18.2.12",
-    "@types/react-dom": "^18.2.5",
-    "better-sqlite3": "^9.4.3",
-    "eslint": "^8.43.0",
-    "eslint-config-next": "^14.x.x",
+    "@react-hookz/web": "latest",
     "lucia": "^3.0.1",
     "lucide-react": "latest",
-    "next": "^14.x.x",
+    "next": "latest",
     "next-auth": "^5.0.0-beta.13",
     "oslo": "^1.1.2",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "typescript": "^5.x.x",
-    "use-debounce": "^10.x.x",
-    "uuid": "^9.0.1"
+    "react": "latest",
+    "react-dom": "latest",
+    "typescript": "latest",
+    "use-debounce": "latest",
+    "uuid": "latest",
+    "better-sqlite3": "^9.4.5"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.9",
-    "@types/uuid": "^9.0.8"
+    "@types/node": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "@types/uuid": "latest",
+    "eslint": "latest",
+    "eslint-config-next": "latest"
   }
 }

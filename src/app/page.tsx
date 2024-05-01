@@ -2,6 +2,7 @@ import { validateRequest } from "@/lib/auth";
 import { readFile } from "fs/promises";
 import dynamic from "next/dynamic";
 import { redirect } from "next/navigation";
+
 const Editor = dynamic(
   async () => (await import("@/components/Editor")).default,
   { ssr: false }
