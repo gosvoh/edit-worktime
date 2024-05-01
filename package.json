@@ -18,17 +18,21 @@
     "@excalidraw/excalidraw": "latest",
     "@lucia-auth/adapter-sqlite": "^3.0.0",
     "@react-hookz/web": "latest",
+    "better-sqlite3": "^9.4.5",
+    "class-variance-authority": "^0.7.0",
+    "clsx": "^2.1.1",
     "lucia": "^3.0.1",
-    "lucide-react": "latest",
+    "lucide-react": "^0.376.0",
     "next": "latest",
     "next-auth": "^5.0.0-beta.13",
     "oslo": "^1.1.2",
     "react": "latest",
     "react-dom": "latest",
+    "tailwind-merge": "^2.3.0",
+    "tailwindcss-animate": "^1.0.7",
     "typescript": "latest",
     "use-debounce": "latest",
-    "uuid": "latest",
-    "better-sqlite3": "^9.4.5"
+    "uuid": "latest"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.9",
@@ -37,6 +41,8 @@
     "@types/react-dom": "latest",
     "@types/uuid": "latest",
     "eslint": "latest",
-    "eslint-config-next": "latest"
+    "eslint-config-next": "latest",
+    "postcss": "^8.4.38",
+    "tailwindcss": "^3.4.3"
   }
 }
