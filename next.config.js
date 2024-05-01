@@ -6,7 +6,7 @@ const nextConfig = {
     esmExternals: false,
   },
   redirects: async () => [
-    { source: "/register", destination: "/", permanent: true },
+    // { source: "/register", destination: "/", permanent: true },
   ],
 };
 
