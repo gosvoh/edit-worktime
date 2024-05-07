@@ -14,10 +14,13 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@ant-design/icons": "^5.3.7",
+    "@ant-design/nextjs-registry": "^1.0.0",
     "@auth/core": "^0.27.0",
     "@excalidraw/excalidraw": "latest",
     "@lucia-auth/adapter-sqlite": "^3.0.0",
     "@react-hookz/web": "latest",
+    "antd": "^5.17.0",
     "better-sqlite3": "^9.4.5",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
@@ -32,7 +35,8 @@
     "tailwindcss-animate": "^1.0.7",
     "typescript": "latest",
     "use-debounce": "latest",
-    "uuid": "latest"
+    "uuid": "latest",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.2/xlsx-0.20.2.tgz"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.9",
