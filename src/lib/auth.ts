@@ -15,12 +15,16 @@ export const lucia = new Lucia(adapter, {
       secure: process.env.NODE_ENV === "production",
     },
   },
-  getUserAttributes: (attributes) => ({ username: attributes.username }),
+  getUserAttributes: (attributes) => ({
+    username: attributes.username,
+    admin: attributes.admin,
+  }),
 });
 
 export const validateRequest = cache(
   async (): Promise<
-    { user: User; session: Session } | { user: null; session: null }
+    | { user: User & { admin: number }; session: Session }
+    | { user: null; session: null }
   > => {
     const sessionId = cookies().get(lucia.sessionCookieName)?.value ?? null;
     if (!sessionId) return { user: null, session: null };
@@ -44,6 +48,7 @@ export const validateRequest = cache(
         );
       }
     } catch {}
+    // @ts-ignore
     return result;
   }
 );
@@ -51,6 +56,6 @@ export const validateRequest = cache(
 declare module "lucia" {
   interface Register {
     Lucia: typeof Lucia;
-    DatabaseUserAttributes: Omit<DatabaseUser, "id">;
+    DatabaseUserAttributes: Omit<DatabaseUser, "id"> & { admin: number };
   }
 }

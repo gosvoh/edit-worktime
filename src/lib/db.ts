@@ -4,7 +4,8 @@ export const db = sqlite("main.sqlite");
 db.exec(`CREATE TABLE IF NOT EXISTS user (
     id TEXT NOT NULL PRIMARY KEY,
     username TEXT NOT NULL UNIQUE,
-    password TEXT NOT NULL
+    password TEXT NOT NULL,
+    admin BOOLEAN NOT NULL DEFAULT FALSE
 )`);
 db.exec(`CREATE TABLE IF NOT EXISTS session (
     id TEXT NOT NULL PRIMARY KEY,
@@ -17,6 +18,7 @@ export interface DatabaseUser {
   id: string;
   username: string;
   password: string;
+  admin?: number;
 }
 
 export interface DatabaseSession {
