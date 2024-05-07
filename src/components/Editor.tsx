@@ -1,6 +1,7 @@
 "use client";
 
 import { saveElements, saveLibrary } from "@/lib/actions";
+import { Users } from "@/lib/excelActions";
 import {
   Excalidraw,
   MainMenu,
@@ -11,7 +12,11 @@ import {
   mutateElement,
   getNonDeletedElements,
   newElementWith,
+  serializeAsJSON,
+  serializeLibraryAsJSON,
+  convertToExcalidrawElements,
 } from "@excalidraw/excalidraw";
+import { ExcalidrawElementSkeleton } from "@excalidraw/excalidraw/types/data/transform";
 import {
   NonDeletedExcalidrawElement,
   ExcalidrawElement,
@@ -25,23 +30,157 @@ import {
 import { useDebouncedCallback, useLocalStorageValue } from "@react-hookz/web";
 import { LanguagesIcon, LogOutIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { v4 as uuid } from "uuid";
 
 enum ElementTypes {
-  containerName = "containerName",
   name = "name",
-  containerTime = "containerTime",
-  containerScale = "containerScale",
-  scale = "scale",
-  containerWorkTime = "containerWorkTime",
-  containerBurden = "containerBurden",
+  nameContainer = "nameContainer",
+  rate = "rate",
+  rateContainer = "rateContainer",
   burden = "burden",
+  maxWorkTime = "maxWorkTime",
+  burdenContainer = "burdenContainer",
+  maxWorkTimeContainer = "maxWorkTimeContainer",
+  burdenTextContainer = "burdenTextContainer",
+  maxWorkTimeTextContainer = "maxWorkTimeTextContainer",
+}
+
+const template: (ExcalidrawElementSkeleton & {
+  customData: { id: string; type: ElementTypes };
+  label?: {
+    text: string;
+    customData: { id: string; type: ElementTypes };
+  };
+  x: number;
+  y: number;
+  height: number;
+  width: number;
+  backgroundColor?: string;
+})[] = [
+  {
+    type: "rectangle",
+    x: 0,
+    y: 0,
+    width: 200,
+    height: 100,
+    roundness: { type: 3 },
+    label: {
+      text: "Сотрудников Сотрудник Сотрудникович",
+      customData: {
+        id: "-1",
+        type: ElementTypes.name,
+      },
+    },
+    customData: {
+      id: "-1",
+      type: ElementTypes.nameContainer,
+    },
+  },
+  {
+    type: "rectangle",
+    x: 0,
+    y: 100,
+    width: 500,
+    height: 300,
+    roundness: { type: 3 },
+    customData: {
+      id: "-1",
+      type: ElementTypes.maxWorkTimeContainer,
+    },
+  },
+  {
+    type: "rectangle",
+    x: 200,
+    y: 0,
+    width: 100,
+    height: 100,
+    roundness: { type: 3 },
+    label: {
+      text: "Ставка:\n1",
+      customData: {
+        id: "-1",
+        type: ElementTypes.rate,
+      },
+    },
+    customData: {
+      id: "-1",
+      type: ElementTypes.rateContainer,
+    },
+  },
+  {
+    type: "rectangle",
+    x: 0,
+    y: 100,
+    backgroundColor: "hsl(88,100%,50%)",
+    fillStyle: "hachure",
+    width: 200,
+    height: 200,
+    roundness: { type: 3 },
+    customData: {
+      id: "-1",
+      type: ElementTypes.burdenContainer,
+    },
+  },
+  {
+    type: "rectangle",
+    x: 300,
+    y: 0,
+    width: 100,
+    height: 100,
+    roundness: { type: 3 },
+    label: {
+      text: "400",
+      customData: {
+        id: "-1",
+        type: ElementTypes.burden,
+      },
+    },
+    customData: {
+      id: "-1",
+      type: ElementTypes.burdenTextContainer,
+    },
+  },
+  {
+    type: "rectangle",
+    x: 400,
+    y: 0,
+    width: 100,
+    height: 100,
+    roundness: { type: 3 },
+    label: {
+      text: "1500",
+      customData: {
+        id: "-1",
+        type: ElementTypes.maxWorkTime,
+      },
+    },
+    customData: {
+      id: "-1",
+      type: ElementTypes.maxWorkTimeTextContainer,
+    },
+  },
+];
+
+function getColor(value: number) {
+  var hue = (1 - (value < 0 ? 0 : value > 1 ? 1 : value)) * 120;
+  return ["hsl(", hue, ",100%,50%)"].join("");
+}
+
+function parseNumber(value: string) {
+  return parseFloat(
+    value
+      .replace(",", ".")
+      .replace(/(?:\r\n|\r|\n)/g, "")
+      .match(/[+-]?\d+(\.\d+)?$/)?.[0] ?? "0"
+  );
 }
 
 export default function Editor(props: {
   elements: readonly NonDeletedExcalidrawElement[];
-  library: LibraryItems;
+  library?: LibraryItems;
+  users: Users[];
+  isAdmin: boolean;
 }) {
   const [api, setApi] = useState<ExcalidrawImperativeAPI>();
   const locale = useLocalStorageValue<"ru" | "en">("locale", {
@@ -54,136 +193,140 @@ export default function Editor(props: {
   const router = useRouter();
   const [elementsLength, setElementsLength] = useState(props.elements.length);
   const currentEditingElementsRef = useRef<ExcalidrawElement[]>([]);
-  const lastEditedElementIdRef = useRef("");
+  const resizingElementRef = useRef<NonDeletedExcalidrawElement>();
+  const lastEditedElementRef = useRef<NonDeletedExcalidrawElement>();
   const debouncedSave = useDebouncedCallback(
     () => {
-      saveElements(JSON.stringify(api?.getSceneElements() ?? [], null, 2));
+      if (!api) return;
+
+      saveElements(JSON.stringify(api.getSceneElements() ?? [], null, 2));
     },
     [api],
     1000,
     10000
   );
+  const [initialized, setInitialized] = useState(false);
 
   useEffect(
     () => setElementsLength(props.elements.length),
     [props.elements.length]
   );
 
-  const onResize = useCallback(
-    (gridSize: number | null) => {
-      debouncedSave();
+  useEffect(() => console.log(props.isAdmin), [props.isAdmin]);
 
-      const scaleElement = currentEditingElementsRef.current.find(
-        (x) => x.customData!.type === ElementTypes.scale
-      ) as ExcalidrawTextElement;
-      const burdenElement = currentEditingElementsRef.current.find(
-        (x) => x.customData!.type === ElementTypes.burden
-      ) as ExcalidrawTextElement;
-      const containerWorkTime = currentEditingElementsRef.current.find(
-        (x) => x.customData!.type === ElementTypes.containerWorkTime
-      )!;
+  const updateBurdenColor = useCallback(() => {
+    if (!api || !lastEditedElementRef.current) return;
 
-      const scale = Number(scaleElement.text.replace(/\D/g, ""));
+    const elements = api.getSceneElementsIncludingDeleted();
+    const burdenContainer = elements.find(
+      (x) =>
+        x.customData?.id === lastEditedElementRef.current?.customData?.id &&
+        x.customData?.type === ElementTypes.burdenContainer
+    );
+    const burdenTextContainer = elements.find(
+      (x) =>
+        x.customData?.id === lastEditedElementRef.current?.customData?.id &&
+        x.customData?.type === ElementTypes.burdenTextContainer
+    );
+    const maxWorkTime = elements.find(
+      (x) =>
+        x.customData?.id === lastEditedElementRef.current?.customData?.id &&
+        x.customData?.type === ElementTypes.maxWorkTime
+    ) as ExcalidrawTextElement | undefined;
 
-      const newWorkTimeValue = String(
-        Math.round(
-          (containerWorkTime.height * containerWorkTime.width * scale) /
-            Math.pow(gridSize ?? 20, 2)
-        )
+    if (!burdenContainer || !burdenTextContainer || !maxWorkTime) return;
+
+    const newColor = getColor(
+      Number(
+        (
+          elements.find(
+            (x) =>
+              x.customData?.id ===
+                lastEditedElementRef.current?.customData?.id &&
+              x.customData?.type === ElementTypes.burden
+          ) as ExcalidrawTextElement
+        ).text
+      ) / Number(maxWorkTime.text)
+    );
+
+    api.updateScene({
+      elements: [
+        ...elements.filter((x) => {
+          if (x.id === burdenContainer.id) return false;
+          // if (x.id === burdenTextContainer.id) return false;
+          return true;
+        }),
+        newElementWith(burdenContainer, { backgroundColor: newColor }),
+        // newElementWith(burdenTextContainer, { backgroundColor: newColor }),
+      ],
+    });
+  }, [api]);
+
+  const onResize = useCallback(() => {
+    if (!resizingElementRef.current || !currentEditingElementsRef.current)
+      return;
+    debouncedSave();
+
+    const key = resizingElementRef.current.customData!.type as ElementTypes;
+
+    if (
+      ![
+        ElementTypes.burdenContainer,
+        ElementTypes.maxWorkTimeContainer,
+      ].includes(key)
+    )
+      return;
+
+    const textElement = currentEditingElementsRef.current.find(
+      (x) => x.customData!.type === key.replace("Container", "")
+    ) as ExcalidrawTextElement;
+
+    const newWorkTextValue = Math.round(
+      (resizingElementRef.current.height * resizingElementRef.current.width) /
+        100
+    );
+    if (textElement.text !== String(newWorkTextValue)) {
+      const elements =
+        api?.getSceneElementsIncludingDeleted().filter((x) => {
+          if (x.id === textElement.id) return false;
+          return true;
+        }) ?? [];
+
+      elements.push(
+        newElementWith(textElement, {
+          text: String(newWorkTextValue),
+          originalText: String(newWorkTextValue),
+          textAlign: "center",
+          verticalAlign: "middle",
+        })
       );
 
-      if (burdenElement.text !== newWorkTimeValue) {
-        api?.updateScene({
-          elements: [
-            ...api
-              .getSceneElementsIncludingDeleted()
-              .filter((x) => x.id !== burdenElement.id),
-            newElementWith(burdenElement, {
-              text: newWorkTimeValue,
-              originalText: newWorkTimeValue,
-            }),
-          ],
-        });
+      if (key === ElementTypes.maxWorkTimeContainer) {
+        const rate = currentEditingElementsRef.current.find(
+          (x) => x.customData!.type === ElementTypes.rate
+        ) as ExcalidrawTextElement;
+        const newRate = Math.round((newWorkTextValue / 1500) * 100) / 100;
+        elements.splice(
+          elements.findIndex((x) => x.id === rate.id),
+          1,
+          newElementWith(rate, {
+            text: `Ставка:\n${newRate}`,
+            originalText: `Ставка:\n${newRate}`,
+          })
+        );
       }
-    },
-    [api, debouncedSave]
-  );
+
+      api?.updateScene({ elements });
+      lastEditedElementRef.current = resizingElementRef.current;
+      updateBurdenColor();
+      lastEditedElementRef.current = undefined;
+    }
+  }, [api, debouncedSave, updateBurdenColor]);
 
   const getElementsByCustomId = useCallback(
     (elements: readonly NonDeletedExcalidrawElement[], id: string) =>
       elements.filter((x) => x.customData?.id === id),
     []
-  );
-
-  const onScaleChange = useCallback(
-    (
-      appState: AppState,
-      nonDeletedElements: readonly NonDeletedExcalidrawElement[]
-    ) => {
-      const scaleElement =
-        lastEditedElementIdRef.current !== ""
-          ? (nonDeletedElements.find(
-              (x) => x.id === lastEditedElementIdRef.current
-            ) as ExcalidrawTextElement | undefined)
-          : undefined;
-      if (
-        appState.editingElement?.customData?.type !== ElementTypes.scale &&
-        scaleElement?.customData?.type !== ElementTypes.scale
-      )
-        return;
-
-      debouncedSave();
-
-      if (
-        appState.editingElement &&
-        lastEditedElementIdRef.current !== appState.editingElement.id
-      )
-        lastEditedElementIdRef.current = appState.editingElement.id;
-
-      if (appState.editingElement || !scaleElement) return;
-
-      let newValue = scaleElement.text.replace(/\D/g, "");
-      if (!newValue) newValue = "1";
-      const customElements = getElementsByCustomId(
-        nonDeletedElements,
-        scaleElement.customData!.id
-      );
-      const burdenElement = customElements.find(
-        (x) => x.customData!.type === ElementTypes.burden
-      ) as ExcalidrawTextElement;
-      const containerWorkTime = customElements.find(
-        (x) => x.customData!.type === ElementTypes.containerWorkTime
-      )!;
-      const newWorkTimeValue = Math.round(
-        (containerWorkTime.height *
-          containerWorkTime.width *
-          Number(newValue)) /
-          Math.pow(appState.gridSize ?? 20, 2)
-      );
-
-      lastEditedElementIdRef.current = "";
-
-      api?.updateScene({
-        elements: [
-          ...nonDeletedElements.filter((x) => {
-            if (x.id === scaleElement.id) return false;
-            if (x.id === burdenElement.id) return false;
-            return true;
-          }),
-          {
-            ...scaleElement,
-            text: `x${newValue}`,
-            originalText: `x${newValue}`,
-          },
-          {
-            ...burdenElement,
-            text: `${newWorkTimeValue}`,
-            originalText: `${newWorkTimeValue}`,
-          },
-        ],
-      });
-    },
-    [debouncedSave, getElementsByCustomId, api]
   );
 
   const onInsertDelete = useCallback(
@@ -197,14 +340,14 @@ export default function Editor(props: {
       );
 
       Object.entries(customElements).forEach(([id, customElements]) => {
-        if (customElements!.length !== 0 && customElements!.length !== 8)
+        if (customElements!.length !== 0 && customElements!.length !== 10)
           api.updateScene({
             elements: api
               .getSceneElementsIncludingDeleted()
               .filter((x) => !customElements!.includes(x)),
           });
 
-        if (customElements!.length === 8 && id === "-1") {
+        if (customElements!.length === 10 && id === "-1") {
           const newId = uuid();
           customElements!.forEach((element) => {
             mutateElement(element, {
@@ -222,19 +365,251 @@ export default function Editor(props: {
     [api, debouncedSave, setElementsLength]
   );
 
+  const onTextEdit = useCallback(() => {
+    if (
+      !lastEditedElementRef.current ||
+      !api ||
+      lastEditedElementRef.current.type !== "text"
+    )
+      return;
+    debouncedSave();
+
+    const id = lastEditedElementRef.current.customData!.id as string;
+    const key = lastEditedElementRef.current.customData!.type as ElementTypes;
+
+    if (
+      ![
+        ElementTypes.burden,
+        ElementTypes.maxWorkTime,
+        ElementTypes.rate,
+      ].includes(key)
+    )
+      return;
+
+    let elements = api
+      .getSceneElementsIncludingDeleted()
+      .filter((x) => x.customData!.id === id);
+
+    const rate = elements.find(
+      (x) => x.customData!.type === ElementTypes.rate
+    ) as ExcalidrawTextElement;
+    const rateContainer = elements.find(
+      (x) => x.customData!.type === ElementTypes.rateContainer
+    ) as NonDeletedExcalidrawElement;
+    const burden = elements.find(
+      (x) => x.customData!.type === ElementTypes.burden
+    ) as ExcalidrawTextElement;
+    const burdenContainer = elements.find(
+      (x) => x.customData!.type === ElementTypes.burdenContainer
+    ) as NonDeletedExcalidrawElement;
+    const maxWorkTime = elements.find(
+      (x) => x.customData!.type === ElementTypes.maxWorkTime
+    ) as ExcalidrawTextElement;
+    const maxWorkTimeContainer = elements.find(
+      (x) => x.customData!.type === ElementTypes.maxWorkTimeContainer
+    ) as NonDeletedExcalidrawElement;
+
+    const numberValue = parseNumber(
+      (
+        elements.find(
+          (x) => x.id === lastEditedElementRef.current!.id
+        ) as ExcalidrawTextElement
+      ).text
+    );
+
+    if (key === ElementTypes.rate) {
+      elements =
+        api.getSceneElementsIncludingDeleted().filter((x) => {
+          if (x.id === rate.containerId || x.id === rate.id) return false;
+          if (x.id === maxWorkTime.id) return false;
+          if (x.id === maxWorkTimeContainer.id) return false;
+          return true;
+        }) ?? [];
+      const aspectRatio = 5 / 3;
+      const height = Math.sqrt(
+        (1500 * (numberValue > 0 ? numberValue : 1) * 100) / aspectRatio
+      );
+      const width = aspectRatio * height;
+
+      elements.push(
+        ...convertToExcalidrawElements([
+          {
+            x: rateContainer.x,
+            y: rateContainer.y,
+            width: rateContainer.width,
+            height: rateContainer.height,
+            type: "rectangle",
+            roundness: { type: 3 },
+            customData: {
+              id,
+              type: ElementTypes.rateContainer,
+            },
+            label: {
+              text: `Ставка:\n${numberValue > 0 ? numberValue : 1}`,
+              customData: {
+                id,
+                type: ElementTypes.rate,
+              },
+            },
+          },
+        ]),
+        newElementWith(maxWorkTime, {
+          text: String(Math.round(1500 * (numberValue > 0 ? numberValue : 1))),
+          originalText: String(
+            Math.round(1500 * (numberValue > 0 ? numberValue : 1))
+          ),
+          textAlign: "center",
+          verticalAlign: "middle",
+        }),
+        newElementWith(maxWorkTimeContainer, {
+          width,
+          height,
+        })
+      );
+    }
+    if (key === ElementTypes.burden) {
+      elements =
+        api.getSceneElementsIncludingDeleted().filter((x) => {
+          if (x.id === burdenContainer.id) return false;
+          return true;
+        }) ?? [];
+
+      const aspectRatio =
+        maxWorkTimeContainer.width / maxWorkTimeContainer.height;
+      const height = Math.sqrt((numberValue * 100) / aspectRatio);
+      const width = aspectRatio * height;
+
+      elements.push(
+        newElementWith(burdenContainer, {
+          width,
+          height,
+          x: maxWorkTimeContainer.x,
+          y: maxWorkTimeContainer.y,
+        })
+      );
+    }
+    if (key === ElementTypes.maxWorkTime) {
+      elements =
+        api.getSceneElementsIncludingDeleted().filter((x) => {
+          if (x.id === maxWorkTimeContainer.id) return false;
+          if (x.id === rate.id) return false;
+          return true;
+        }) ?? [];
+
+      const aspectRatio = 5 / 3;
+      const height = Math.sqrt(
+        ((numberValue > 10 ? numberValue : 1500) * 100) / aspectRatio
+      );
+      const width = aspectRatio * height;
+      const newRate =
+        Math.round(((numberValue > 10 ? numberValue : 1500) / 1500) * 100) /
+        100;
+      elements.push(
+        newElementWith(maxWorkTimeContainer, { width, height }),
+        newElementWith(rate, {
+          text: `Ставка:\n${newRate}`,
+          originalText: `Ставка:\n${newRate}`,
+        })
+      );
+    }
+
+    api.updateScene({ elements });
+    updateBurdenColor();
+
+    lastEditedElementRef.current = undefined;
+  }, [api, debouncedSave, updateBurdenColor]);
+
+  const initializeElements = useMemo(() => {
+    const elements = restoreElements(props.elements, undefined);
+    if (!props.users.length) {
+      setElementsLength(elements.length);
+      return elements;
+    }
+
+    const users = props.users;
+
+    const elementsMap = Object.groupBy(
+      elements.filter((x) => x.customData?.id),
+      (x) => x.customData?.id
+    );
+
+    const squareSize = Math.floor(Math.sqrt(users.length));
+    users.forEach((user, i) => {
+      if (elementsMap[user.id]) return;
+
+      const newElements = JSON.parse(
+        JSON.stringify(template)
+      ) as typeof template;
+      newElements.forEach((element) => {
+        element.customData.id = user.id;
+        if (element.label) element.label.customData.id = user.id;
+        element.x += 750 * (i % squareSize);
+        element.y += 750 * Math.floor(i / squareSize);
+
+        switch (element.customData?.type) {
+          case ElementTypes.nameContainer:
+            element.label!.text = user.ФИО;
+            break;
+          case ElementTypes.maxWorkTimeContainer: {
+            const aspectRatio = 5 / 3;
+            element.height = Math.sqrt(
+              (1500 * user.Ставка * 100) / aspectRatio
+            );
+            element.width = aspectRatio * element.height;
+            break;
+          }
+          case ElementTypes.rateContainer:
+            element.label!.text = `Ставка:\n${user.Ставка}`;
+            break;
+          case ElementTypes.burdenTextContainer:
+            element.label!.text = String(user.Нагрузка);
+            break;
+          case ElementTypes.burdenContainer: {
+            element.backgroundColor = getColor(
+              user.Нагрузка / (1500 * user.Ставка)
+            );
+            const aspectRatio = 5 / 3;
+            element.height = Math.sqrt((user.Нагрузка * 100) / aspectRatio);
+            element.width = aspectRatio * element.height;
+            break;
+          }
+          case ElementTypes.maxWorkTime: {
+            const aspectRatio = 5 / 3;
+            element.height = Math.sqrt(
+              (1500 * user.Ставка * 100) / aspectRatio
+            );
+            element.width = aspectRatio * element.height;
+            break;
+          }
+          case ElementTypes.maxWorkTimeTextContainer:
+            element.label!.text = String(1500 * user.Ставка);
+            break;
+        }
+      });
+      elements.push(...convertToExcalidrawElements(newElements));
+    });
+
+    setInitialized(true);
+    setElementsLength(elements.length);
+    return elements;
+  }, [props.elements, props.users]);
+
   const onChange = useCallback(
     (elements: readonly ExcalidrawElement[], appState: AppState) => {
       if (appState.theme !== theme.value) theme.set(appState.theme);
 
       const nonDeletedElements = getNonDeletedElements(elements);
-
-      if (nonDeletedElements.length !== elementsLength) {
-        console.log(
-          "nonDeletedElements.length !== elementsLength",
-          nonDeletedElements.length,
-          elementsLength
-        );
+      if (nonDeletedElements.length !== elementsLength)
         onInsertDelete(nonDeletedElements);
+
+      if (
+        appState.editingElement &&
+        appState.editingElement.customData?.id &&
+        !lastEditedElementRef.current
+      )
+        lastEditedElementRef.current = appState.editingElement;
+      if (!appState.editingElement && lastEditedElementRef.current) {
+        onTextEdit();
       }
 
       if (appState.resizingElement?.customData) {
@@ -242,8 +617,9 @@ export default function Editor(props: {
           nonDeletedElements,
           appState.resizingElement.customData.id
         );
+        resizingElementRef.current = appState.resizingElement;
 
-        if (customElements.length === 8) {
+        if (customElements.length === 10) {
           if (currentEditingElementsRef.current.length === 0)
             currentEditingElementsRef.current = customElements;
           if (
@@ -253,19 +629,18 @@ export default function Editor(props: {
             currentEditingElementsRef.current = customElements;
         } else currentEditingElementsRef.current = [];
       } else {
-        if (currentEditingElementsRef.current.length === 8)
-          onResize(appState.gridSize);
+        if (currentEditingElementsRef.current.length === 10) {
+          onResize();
+        }
         currentEditingElementsRef.current = [];
       }
-
-      onScaleChange(appState, nonDeletedElements);
     },
     [
       elementsLength,
       getElementsByCustomId,
       onInsertDelete,
       onResize,
-      onScaleChange,
+      onTextEdit,
       theme,
     ]
   );
@@ -276,7 +651,6 @@ export default function Editor(props: {
     <div className="editor">
       <Excalidraw
         autoFocus
-        gridModeEnabled
         objectsSnapModeEnabled
         isCollaborating={false}
         langCode={locale.value === "en" ? "en-US" : "ru-RU"}
@@ -287,12 +661,12 @@ export default function Editor(props: {
         }}
         excalidrawAPI={setApi}
         initialData={{
-          elements: restoreElements(props.elements, undefined),
+          elements: initializeElements,
           libraryItems: restoreLibraryItems(props.library, "unpublished"),
         }}
-        onLibraryChange={(library) =>
-          saveLibrary(JSON.stringify(library, null, 2))
-        }
+        // onLibraryChange={(library) =>
+        //   saveLibrary(JSON.stringify(library, null, 2))
+        // }
       >
         <WelcomeScreen>
           <WelcomeScreen.Hints.HelpHint />
@@ -315,6 +689,16 @@ export default function Editor(props: {
           <MainMenu.DefaultItems.ToggleTheme />
           <MainMenu.DefaultItems.ChangeCanvasBackground />
           <MainMenu.Separator />
+          {props.isAdmin && (
+            <>
+              <MainMenu.ItemLink href="/admin" target="_parent">
+                {locale.value === "en"
+                  ? "Admin panel"
+                  : "Панель администратора"}
+              </MainMenu.ItemLink>
+              <MainMenu.Separator />
+            </>
+          )}
           <MainMenu.Item
             icon={<LanguagesIcon />}
             onSelect={() => locale.set(locale.value === "en" ? "ru" : "en")}
@@ -332,7 +716,7 @@ export default function Editor(props: {
               )
             }
           >
-            Logout
+            {locale.value === "en" ? "Log out" : "Выйти"}
           </MainMenu.Item>
         </MainMenu>
       </Excalidraw>
