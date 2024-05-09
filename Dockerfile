@@ -40,6 +40,11 @@ ENV NODE_ENV production
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
+RUN mkdir -p /app/public
+RUN chown nextjs:nodejs /app/public
+RUN mkdir -p /app/prisma
+RUN chown nextjs:nodejs /app/prisma
+
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/prisma ./prisma
 
