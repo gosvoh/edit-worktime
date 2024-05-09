@@ -27,4 +27,4 @@ jobs:
           registry: docker.io
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-          buildArgs: DATABASE_URL=file=${{ secrets.DATABASE_URL }}
+          buildArgs: DATABASE_URL=${{ secrets.DATABASE_URL }}
