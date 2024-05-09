@@ -1,12 +1,13 @@
-import { validateRequest } from "@/lib/auth";
 import { redirect } from "next/navigation";
-import { Button, Table } from "antd";
-import UsersTable from "./Table";
+import UsersTable from "./EditableTable";
 import { Users, read } from "@/lib/excelActions";
+import { auth } from "../auth";
+
+export const dynamic = "force-dynamic";
 
 export default async function Admin() {
-  const { user } = await validateRequest();
-  if (!user || !user.admin) return redirect("/login");
+  const session = await auth();
+  if (!session || session.user?.name !== "admin") return redirect("/");
 
   const users: Users[] = JSON.parse(await read());
 

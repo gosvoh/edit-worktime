@@ -1,26 +1,24 @@
 "use client";
 
-import { saveElements, saveLibrary } from "@/lib/actions";
-import { Users } from "@/lib/excelActions";
+import { logout, saveElements } from "@/lib/actions";
+import { Users, update } from "@/lib/excelActions";
 import {
   Excalidraw,
   MainMenu,
   THEME,
   WelcomeScreen,
+  convertToExcalidrawElements,
+  getNonDeletedElements,
+  mutateElement,
+  newElementWith,
   restoreElements,
   restoreLibraryItems,
-  mutateElement,
-  getNonDeletedElements,
-  newElementWith,
-  serializeAsJSON,
-  serializeLibraryAsJSON,
-  convertToExcalidrawElements,
 } from "@excalidraw/excalidraw";
 import { ExcalidrawElementSkeleton } from "@excalidraw/excalidraw/types/data/transform";
 import {
-  NonDeletedExcalidrawElement,
   ExcalidrawElement,
   ExcalidrawTextElement,
+  NonDeletedExcalidrawElement,
 } from "@excalidraw/excalidraw/types/element/types";
 import {
   AppState,
@@ -29,7 +27,6 @@ import {
 } from "@excalidraw/excalidraw/types/types";
 import { useDebouncedCallback, useLocalStorageValue } from "@react-hookz/web";
 import { LanguagesIcon, LogOutIcon } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { v4 as uuid } from "uuid";
 
@@ -190,7 +187,6 @@ export default function Editor(props: {
     "theme",
     { defaultValue: THEME.DARK }
   );
-  const router = useRouter();
   const [elementsLength, setElementsLength] = useState(props.elements.length);
   const currentEditingElementsRef = useRef<ExcalidrawElement[]>([]);
   const resizingElementRef = useRef<NonDeletedExcalidrawElement>();
@@ -199,20 +195,50 @@ export default function Editor(props: {
     () => {
       if (!api) return;
 
-      saveElements(JSON.stringify(api.getSceneElements() ?? [], null, 2));
+      const elements = api.getSceneElements() ?? [];
+      saveElements(JSON.stringify(elements, null, 2));
+      const employeesElements = Object.groupBy(
+        getNonDeletedElements(elements),
+        (x) => x.customData?.id
+      );
+      const employees: Users[] = [];
+      Object.entries(employeesElements).forEach(([id, elements]) => {
+        if (id === "undefined" || !elements) return;
+        const employee = {
+          ФИО: (
+            elements.find(
+              (x) => x.customData?.type === ElementTypes.name
+            ) as ExcalidrawTextElement
+          ).text,
+          Ставка: parseNumber(
+            (
+              elements.find(
+                (x) => x.customData?.type === ElementTypes.rate
+              ) as ExcalidrawTextElement
+            ).text ?? "1"
+          ),
+          Нагрузка: parseNumber(
+            (
+              elements.find(
+                (x) => x.customData?.type === ElementTypes.burden
+              ) as ExcalidrawTextElement
+            ).text ?? "0"
+          ),
+          id,
+        };
+        employees.push(employee);
+      });
+      update(employees);
     },
     [api],
     1000,
     10000
   );
-  const [initialized, setInitialized] = useState(false);
 
   useEffect(
     () => setElementsLength(props.elements.length),
     [props.elements.length]
   );
-
-  useEffect(() => console.log(props.isAdmin), [props.isAdmin]);
 
   const updateBurdenColor = useCallback(() => {
     if (!api || !lastEditedElementRef.current) return;
@@ -388,7 +414,7 @@ export default function Editor(props: {
 
     let elements = api
       .getSceneElementsIncludingDeleted()
-      .filter((x) => x.customData!.id === id);
+      .filter((x) => x.customData?.id === id);
 
     const rate = elements.find(
       (x) => x.customData!.type === ElementTypes.rate
@@ -520,7 +546,7 @@ export default function Editor(props: {
   }, [api, debouncedSave, updateBurdenColor]);
 
   const initializeElements = useMemo(() => {
-    const elements = restoreElements(props.elements, undefined);
+    let elements = restoreElements(props.elements, undefined);
     if (!props.users.length) {
       setElementsLength(elements.length);
       return elements;
@@ -528,15 +554,10 @@ export default function Editor(props: {
 
     const users = props.users;
 
-    const elementsMap = Object.groupBy(
-      elements.filter((x) => x.customData?.id),
-      (x) => x.customData?.id
-    );
+    elements = elements.filter((x) => !x.customData?.id);
 
     const squareSize = Math.floor(Math.sqrt(users.length));
     users.forEach((user, i) => {
-      if (elementsMap[user.id]) return;
-
       const newElements = JSON.parse(
         JSON.stringify(template)
       ) as typeof template;
@@ -582,17 +603,19 @@ export default function Editor(props: {
             break;
           }
           case ElementTypes.maxWorkTimeTextContainer:
-            element.label!.text = String(1500 * user.Ставка);
+            element.label!.text = String(Math.round(1500 * user.Ставка));
             break;
         }
       });
       elements.push(...convertToExcalidrawElements(newElements));
     });
 
-    setInitialized(true);
+    // @ts-ignore TODO fix
+    if (!props.isAdmin) elements.forEach((x) => (x.locked = true));
+
     setElementsLength(elements.length);
     return elements;
-  }, [props.elements, props.users]);
+  }, [props.elements, props.isAdmin, props.users]);
 
   const onChange = useCallback(
     (elements: readonly ExcalidrawElement[], appState: AppState) => {
@@ -710,13 +733,11 @@ export default function Editor(props: {
           <MainMenu.Separator />
           <MainMenu.Item
             icon={<LogOutIcon />}
-            onSelect={async () =>
-              await fetch("/logout", { method: "POST" }).finally(() =>
-                router.refresh()
-              )
-            }
+            onSelect={async () => await logout()}
           >
-            {locale.value === "en" ? "Log out" : "Выйти"}
+            {`${props.isAdmin ? "Admin" : "Viewer"} - ${
+              locale.value === "en" ? "Log out" : "Выйти"
+            }`}
           </MainMenu.Item>
         </MainMenu>
       </Excalidraw>

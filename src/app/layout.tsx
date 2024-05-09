@@ -1,8 +1,8 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "tldraw Next.js Example",
-  description: "An example of how to use tldraw in a Next.js app",
+  title: "ITMO Edit worktime",
+  description: "Edit worktime for ITMO University employees",
 };
 
 export default function RootLayout({
