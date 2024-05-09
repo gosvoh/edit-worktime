@@ -30,7 +30,6 @@ RUN npm run prisma
 RUN npm run build
 
 RUN mkdir -p /app/public
-RUN chown nextjs:nodejs /app/public
 
 # Production image, copy all the files and run next
 FROM base AS runner
