@@ -1,0 +1,27 @@
+services:
+  worktime-board:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: worktime-board
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: "3000"
+      CLIENT_DIST: "/app/client/dist"
+      DB_PATH: "/app/data/worktime.sqlite"
+      ADMIN_LOGIN: "admin"
+      ADMIN_PASSWORD: "admin12345"
+      EMPLOYEE_LOGIN: "employee1"
+      EMPLOYEE_PASSWORD: "employee12345"
+      COOKIE_SECURE: "false"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+
+volumes:
+  data:
+
+networks:
+  nginx:
+    external: true

@@ -1,0 +1,27 @@
+{
+  "name": "worktime-board",
+  "version": "0.4.6",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev:api": "bun --watch server/src/index.ts",
+    "dev:web": "bunx vite --config client/vite.config.ts",
+    "dev": "bunx concurrently -n api,web -c green,blue \"bun run dev:api\" \"bun run dev:web\"",
+    "build:web": "bunx vite build --config client/vite.config.ts",
+    "start": "bun server/src/index.ts",
+    "typecheck": "bunx tsc -p server/tsconfig.json --noEmit && bunx tsc -p client/tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.2",
+    "bun-types": "^1.2.0",
+    "concurrently": "^9.2.1",
+    "typescript": "^5.6.2",
+    "vite": "^5.4.10"
+  }
+}
