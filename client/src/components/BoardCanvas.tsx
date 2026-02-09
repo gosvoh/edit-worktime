@@ -1,6 +1,6 @@
-import type { PointerEvent as ReactPointerEvent, RefObject } from "react";
+import { useCallback, useEffect, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
 import { EmployeeCard } from "./EmployeeCard";
-import type { EmployeePatch } from "../lib/board";
+import { clamp, ZOOM_MAX, ZOOM_MIN, ZOOM_STEP, type EmployeePatch } from "../lib/board";
 import type { AppSettings, Employee } from "../types";
 
 type CanvasSize = {
@@ -22,7 +22,7 @@ type BoardCanvasProps = {
   isAdmin: boolean;
   draggingEmployeeId: number | null;
   onPatchEmployee: (employeeId: number, patch: EmployeePatch) => Promise<void>;
-  onCardPointerDown: (event: ReactPointerEvent, employee: Employee) => void;
+  onCardPointerDown: (event: ReactPointerEvent<HTMLButtonElement>, employee: Employee) => void;
   onBoardPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void;
 };
 
@@ -43,6 +43,61 @@ export function BoardCanvas({
   onCardPointerDown,
   onBoardPointerDown
 }: BoardCanvasProps) {
+  const onCtrlWheelZoom = useCallback((event: WheelEvent) => {
+    if (!event.ctrlKey) {
+      return;
+    }
+
+    const container = boardScrollRef.current;
+    if (!container) {
+      return;
+    }
+    if (!(event.target instanceof Node) || !container.contains(event.target)) {
+      return;
+    }
+
+    event.preventDefault();
+
+    const direction = Math.sign(event.deltaY);
+    if (direction === 0) {
+      return;
+    }
+
+    const nextZoom = clamp(Number((zoom - direction * ZOOM_STEP).toFixed(2)), ZOOM_MIN, ZOOM_MAX);
+    if (nextZoom === zoom) {
+      return;
+    }
+
+    const rect = container.getBoundingClientRect();
+    const pointerX = event.clientX - rect.left;
+    const pointerY = event.clientY - rect.top;
+    const worldX = (container.scrollLeft + pointerX) / zoom;
+    const worldY = (container.scrollTop + pointerY) / zoom;
+    const nextLeft = worldX * nextZoom - pointerX;
+    const nextTop = worldY * nextZoom - pointerY;
+
+    onZoomChange(nextZoom);
+
+    requestAnimationFrame(() => {
+      const maxLeft = Math.max(0, canvasSize.width * nextZoom - container.clientWidth);
+      const maxTop = Math.max(0, canvasSize.height * nextZoom - container.clientHeight);
+      container.scrollLeft = clamp(nextLeft, 0, maxLeft);
+      container.scrollTop = clamp(nextTop, 0, maxTop);
+    });
+  }, [zoom, onZoomChange, boardScrollRef, canvasSize.width, canvasSize.height]);
+
+  useEffect(() => {
+    const container = boardScrollRef.current;
+    if (!container) {
+      return;
+    }
+
+    container.addEventListener("wheel", onCtrlWheelZoom, { passive: false });
+    return () => {
+      container.removeEventListener("wheel", onCtrlWheelZoom);
+    };
+  }, [boardScrollRef, onCtrlWheelZoom]);
+
   return (
     <div className="content content-board-only">
       <main className="board-area board-area-full">
@@ -51,19 +106,15 @@ export function BoardCanvas({
             Масштаб: {Math.round(zoom * 100)}%
             <input
               type="range"
-              min={0.6}
-              max={1.4}
-              step={0.05}
+              min={ZOOM_MIN}
+              max={ZOOM_MAX}
+              step={ZOOM_STEP}
               value={zoom}
               onChange={(event) => onZoomChange(Number(event.target.value))}
             />
           </label>
           <div className="board-help-inline">
-            {isPanning && "Режим перемещения активен"}
-            {!isPanning && isSpacePressed && "Удерживайте ЛКМ и тяните для перемещения"}
-            {!isPanning &&
-              !isSpacePressed &&
-              "ЛКМ по пустому полю, средняя кнопка мыши или Space + ЛКМ: перемещение по X/Y"}
+            Перемещение: тяните пустое поле мышью или пальцем. Масштаб: ползунок или Ctrl + колесо.
           </div>
           <div className="legend">
             <span className="legend-item normal">Норма</span>
@@ -80,7 +131,9 @@ export function BoardCanvas({
               <li>Навигация: зажмите ЛКМ на пустом фоне и тяните поле по горизонтали и вертикали.</li>
               <li>Альтернатива: зажмите среднюю кнопку мыши и тяните.</li>
               <li>Альтернатива: удерживайте Space + ЛКМ и тяните.</li>
+              <li>Телефон/планшет: тяните поле одним пальцем.</li>
               <li>Масштаб меняется ползунком «Масштаб» сверху.</li>
+              <li>На ПК также работает Ctrl + колесо мыши для приближения и отдаления.</li>
               <li>Администратор может перетаскивать карточки за кнопку move.</li>
               <li>Поля в карточке (ставка, нагрузка, оплата) сохраняются при выходе из поля.</li>
               <li>Цвета: зеленый - норма, желтый - близко к лимиту, оранжевый - лимит, красный - перегруз.</li>

@@ -6,6 +6,9 @@ export const CARD_WIDTH = 320;
 export const CARD_HEIGHT = 250;
 export const MIN_CANVAS_WIDTH = 1200;
 export const MIN_CANVAS_HEIGHT = 800;
+export const ZOOM_MIN = 0.6;
+export const ZOOM_MAX = 1.4;
+export const ZOOM_STEP = 0.05;
 export const MAX_COORD = 50000;
 export const THEME_KEY = "worktime_theme";
 export const BOARD_VIEW_KEY = "worktime_board_view";
@@ -74,7 +77,7 @@ export function readSavedBoardView(): BoardView | null {
       return null;
     }
     return {
-      zoom: clamp(parsed.zoom, 0.6, 1.4),
+      zoom: clamp(parsed.zoom, ZOOM_MIN, ZOOM_MAX),
       left: Math.max(0, parsed.left),
       top: Math.max(0, parsed.top)
     };

@@ -14,6 +14,7 @@ type DragState = {
   employeeId: number;
   offsetX: number;
   offsetY: number;
+  pointerId: number;
 };
 
 type UseBoardInteractionsParams = {
@@ -41,6 +42,7 @@ export function useBoardInteractions({
     startClientY: number;
     startScrollLeft: number;
     startScrollTop: number;
+    pointerId: number;
   } | null>(null);
 
   useEffect(() => {
@@ -100,11 +102,13 @@ export function useBoardInteractions({
       return;
     }
 
-    const canPanByMouse = event.button === 1 || event.button === 2;
-    const canPanBySpace = event.button === 0 && isSpacePressed;
+    const isPrimaryButton = event.button === 0;
+    const canPanByMouse = event.pointerType === "mouse" && (event.button === 1 || event.button === 2);
+    const canPanBySpace = event.pointerType === "mouse" && isPrimaryButton && isSpacePressed;
     const canPanByLeftDragOnEmptyBoard = event.button === 0 && target.closest(".employee-card") === null;
+    const canPanByTouch = event.pointerType === "touch" && isPrimaryButton;
 
-    if (!canPanByMouse && !canPanBySpace && !canPanByLeftDragOnEmptyBoard) {
+    if (!canPanByMouse && !canPanBySpace && !canPanByLeftDragOnEmptyBoard && !canPanByTouch) {
       return;
     }
 
@@ -114,11 +118,15 @@ export function useBoardInteractions({
     }
 
     event.preventDefault();
+    if (event.currentTarget.setPointerCapture) {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
     panStateRef.current = {
       startClientX: event.clientX,
       startClientY: event.clientY,
       startScrollLeft: container.scrollLeft,
-      startScrollTop: container.scrollTop
+      startScrollTop: container.scrollTop,
+      pointerId: event.pointerId
     };
     setIsPanning(true);
   }, [dragState, isSpacePressed]);
@@ -134,37 +142,54 @@ export function useBoardInteractions({
       if (!state || !container) {
         return;
       }
+      if (event.pointerId !== state.pointerId) {
+        return;
+      }
       const dx = event.clientX - state.startClientX;
       const dy = event.clientY - state.startClientY;
       container.scrollLeft = state.startScrollLeft - dx;
       container.scrollTop = state.startScrollTop - dy;
     };
 
-    const onUp = () => {
+    const onUp = (event: PointerEvent) => {
+      const state = panStateRef.current;
+      if (!state || event.pointerId !== state.pointerId) {
+        return;
+      }
       panStateRef.current = null;
       setIsPanning(false);
     };
 
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
 
     return () => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
     };
   }, [isPanning]);
 
   const onCardPointerDown = useCallback(
-    (event: ReactPointerEvent, employee: Employee) => {
+    (event: ReactPointerEvent<HTMLButtonElement>, employee: Employee) => {
       if (userRole !== "admin") {
         return;
       }
+      if (event.button !== 0) {
+        return;
+      }
       event.preventDefault();
+      event.stopPropagation();
+      if (event.currentTarget.setPointerCapture) {
+        event.currentTarget.setPointerCapture(event.pointerId);
+      }
       const point = toCanvasPoint(event.clientX, event.clientY);
       setDragState({
         employeeId: employee.id,
         offsetX: point.x - employee.x,
-        offsetY: point.y - employee.y
+        offsetY: point.y - employee.y,
+        pointerId: event.pointerId
       });
       dragPositionRef.current = { x: employee.x, y: employee.y };
     },
@@ -177,6 +202,9 @@ export function useBoardInteractions({
     }
 
     const onMove = (event: PointerEvent) => {
+      if (event.pointerId !== dragState.pointerId) {
+        return;
+      }
       const point = toCanvasPoint(event.clientX, event.clientY);
       const nextX = clamp(point.x - dragState.offsetX, 0, MAX_COORD);
       const nextY = clamp(point.y - dragState.offsetY, 0, MAX_COORD);
@@ -189,7 +217,10 @@ export function useBoardInteractions({
       );
     };
 
-    const onUp = () => {
+    const onUp = (event: PointerEvent) => {
+      if (event.pointerId !== dragState.pointerId) {
+        return;
+      }
       const current = dragPositionRef.current;
       const employeeId = dragState.employeeId;
       setDragState(null);
@@ -201,10 +232,12 @@ export function useBoardInteractions({
 
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
 
     return () => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
     };
   }, [dragState, userRole, patchEmployee, setEmployees, toCanvasPoint]);
 

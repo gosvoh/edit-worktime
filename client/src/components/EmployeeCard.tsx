@@ -9,7 +9,7 @@ type EmployeeCardProps = {
   isAdmin: boolean;
   isDragging: boolean;
   onPatch: (employeeId: number, patch: EmployeePatch) => Promise<void>;
-  onPointerDown: (event: ReactPointerEvent, employee: Employee) => void;
+  onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>, employee: Employee) => void;
 };
 
 export function EmployeeCard({

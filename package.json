@@ -12,6 +12,7 @@
     "typecheck": "bunx tsc -p server/tsconfig.json --noEmit && bunx tsc -p client/tsconfig.json --noEmit"
   },
   "dependencies": {
+    "lucide-react": "^0.469.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
