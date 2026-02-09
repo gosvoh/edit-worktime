@@ -7,7 +7,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type SetStateAction
 } from "react";
-import { MAX_COORD, clamp, type EmployeePatch } from "../lib/board";
+import { GRID_SIZE, MAX_COORD, clamp, type EmployeePatch } from "../lib/board";
 import type { Employee, UserRole } from "../types";
 
 type DragState = {
@@ -20,6 +20,7 @@ type DragState = {
 type UseBoardInteractionsParams = {
   userRole: UserRole | null | undefined;
   zoom: number;
+  snapToGrid: boolean;
   setEmployees: Dispatch<SetStateAction<Employee[]>>;
   patchEmployee: (employeeId: number, patch: EmployeePatch) => Promise<void>;
 };
@@ -27,6 +28,7 @@ type UseBoardInteractionsParams = {
 export function useBoardInteractions({
   userRole,
   zoom,
+  snapToGrid,
   setEmployees,
   patchEmployee
 }: UseBoardInteractionsParams) {
@@ -206,8 +208,18 @@ export function useBoardInteractions({
         return;
       }
       const point = toCanvasPoint(event.clientX, event.clientY);
-      const nextX = clamp(point.x - dragState.offsetX, 0, MAX_COORD);
-      const nextY = clamp(point.y - dragState.offsetY, 0, MAX_COORD);
+      const rawX = point.x - dragState.offsetX;
+      const rawY = point.y - dragState.offsetY;
+      const nextX = clamp(
+        snapToGrid ? Math.round(rawX / GRID_SIZE) * GRID_SIZE : rawX,
+        0,
+        MAX_COORD
+      );
+      const nextY = clamp(
+        snapToGrid ? Math.round(rawY / GRID_SIZE) * GRID_SIZE : rawY,
+        0,
+        MAX_COORD
+      );
       dragPositionRef.current = { x: nextX, y: nextY };
 
       setEmployees((prev) =>
@@ -239,7 +251,7 @@ export function useBoardInteractions({
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onUp);
     };
-  }, [dragState, userRole, patchEmployee, setEmployees, toCanvasPoint]);
+  }, [dragState, userRole, patchEmployee, setEmployees, toCanvasPoint, snapToGrid]);
 
   return {
     dragState,

@@ -78,6 +78,7 @@ export default function App() {
   } = useBoardInteractions({
     userRole: user?.role,
     zoom: ui.zoom,
+    snapToGrid: ui.snapToGrid,
     setEmployees,
     patchEmployee
   });
@@ -220,6 +221,8 @@ export default function App() {
       <BoardCanvas
         zoom={ui.zoom}
         onZoomChange={ui.setZoom}
+        snapToGrid={ui.snapToGrid}
+        onSnapToGridChange={ui.setSnapToGrid}
         isPanning={isPanning}
         isSpacePressed={isSpacePressed}
         showGuide={ui.showGuide}

@@ -1,6 +1,13 @@
 import { useCallback, useEffect, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
 import { EmployeeCard } from "./EmployeeCard";
-import { clamp, ZOOM_MAX, ZOOM_MIN, ZOOM_STEP, type EmployeePatch } from "../lib/board";
+import {
+  GRID_SIZE,
+  clamp,
+  ZOOM_MAX,
+  ZOOM_MIN,
+  ZOOM_STEP,
+  type EmployeePatch
+} from "../lib/board";
 import type { AppSettings, Employee } from "../types";
 
 type CanvasSize = {
@@ -11,6 +18,8 @@ type CanvasSize = {
 type BoardCanvasProps = {
   zoom: number;
   onZoomChange: (value: number) => void;
+  snapToGrid: boolean;
+  onSnapToGridChange: (value: boolean) => void;
   isPanning: boolean;
   isSpacePressed: boolean;
   showGuide: boolean;
@@ -29,6 +38,8 @@ type BoardCanvasProps = {
 export function BoardCanvas({
   zoom,
   onZoomChange,
+  snapToGrid,
+  onSnapToGridChange,
   isPanning,
   isSpacePressed,
   showGuide,
@@ -102,7 +113,7 @@ export function BoardCanvas({
     <div className="content content-board-only">
       <main className="board-area board-area-full">
         <div className="board-top-controls">
-          <label>
+          <label className="zoom-control">
             Масштаб: {Math.round(zoom * 100)}%
             <input
               type="range"
@@ -116,11 +127,23 @@ export function BoardCanvas({
           <div className="board-help-inline">
             Перемещение: тяните пустое поле мышью или пальцем. Масштаб: ползунок или Ctrl + колесо.
           </div>
-          <div className="legend">
-            <span className="legend-item normal">Норма</span>
-            <span className="legend-item warning">Близко к лимиту</span>
-            <span className="legend-item max">Лимит</span>
-            <span className="legend-item over">Перегруз</span>
+          <div className="board-options">
+            {isAdmin && (
+              <label className="board-toggle">
+                <input
+                  type="checkbox"
+                  checked={snapToGrid}
+                  onChange={(event) => onSnapToGridChange(event.target.checked)}
+                />
+                Привязка к сетке
+              </label>
+            )}
+            <div className="legend">
+              <span className="legend-item normal">Норма</span>
+              <span className="legend-item warning">Близко к лимиту</span>
+              <span className="legend-item max">Лимит</span>
+              <span className="legend-item over">Перегруз</span>
+            </div>
           </div>
         </div>
 
@@ -135,6 +158,7 @@ export function BoardCanvas({
               <li>Масштаб меняется ползунком «Масштаб» сверху.</li>
               <li>На ПК также работает Ctrl + колесо мыши для приближения и отдаления.</li>
               <li>Администратор может перетаскивать карточки за кнопку move.</li>
+              <li>Для администратора: «Привязка к сетке» выравнивает карточки по клеткам.</li>
               <li>Поля в карточке (ставка, нагрузка, оплата) сохраняются при выходе из поля.</li>
               <li>Цвета: зеленый - норма, желтый - близко к лимиту, оранжевый - лимит, красный - перегруз.</li>
             </ul>
@@ -150,7 +174,7 @@ export function BoardCanvas({
               event.preventDefault();
             }
           }}
-          >
+        >
           <div
             className="board-surface"
             style={{
@@ -158,7 +182,7 @@ export function BoardCanvas({
               height: canvasSize.height * zoom,
               minWidth: "100%",
               minHeight: "100%",
-              backgroundSize: `${40 * zoom}px ${40 * zoom}px`
+              backgroundSize: `${GRID_SIZE * zoom}px ${GRID_SIZE * zoom}px`
             }}
           >
             <div

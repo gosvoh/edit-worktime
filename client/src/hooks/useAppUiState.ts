@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import { THEME_KEY, readSavedBoardView, type ThemeMode } from "../lib/board";
+import {
+  SNAP_TO_GRID_KEY,
+  THEME_KEY,
+  readSavedBoardView,
+  type ThemeMode
+} from "../lib/board";
 import {
   createInitialLoginForm,
   createInitialPasswordForm,
@@ -16,6 +21,7 @@ export function useAppUiState() {
     }
     return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
   });
+  const [snapToGrid, setSnapToGrid] = useState(() => localStorage.getItem(SNAP_TO_GRID_KEY) === "1");
 
   const [showGuide, setShowGuide] = useState(false);
   const [showAdminModal, setShowAdminModal] = useState(false);
@@ -29,6 +35,10 @@ export function useAppUiState() {
     document.documentElement.setAttribute("data-theme", theme);
     localStorage.setItem(THEME_KEY, theme);
   }, [theme]);
+
+  useEffect(() => {
+    localStorage.setItem(SNAP_TO_GRID_KEY, snapToGrid ? "1" : "0");
+  }, [snapToGrid]);
 
   useEffect(() => {
     if (!showAdminModal && !showImportModal && !showPasswordModal) {
@@ -70,6 +80,7 @@ export function useAppUiState() {
     zoom,
     setZoom,
     theme,
+    snapToGrid,
     showGuide,
     showAdminModal,
     showImportModal,
@@ -79,6 +90,7 @@ export function useAppUiState() {
     setShowAdminModal,
     setShowImportModal,
     setShowPasswordModal,
+    setSnapToGrid,
     toggleTheme,
     toggleGuide,
     onLoginFormChange,

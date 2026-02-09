@@ -9,9 +9,11 @@ export const MIN_CANVAS_HEIGHT = 800;
 export const ZOOM_MIN = 0.6;
 export const ZOOM_MAX = 1.4;
 export const ZOOM_STEP = 0.05;
+export const GRID_SIZE = 40;
 export const MAX_COORD = 50000;
 export const THEME_KEY = "worktime_theme";
 export const BOARD_VIEW_KEY = "worktime_board_view";
+export const SNAP_TO_GRID_KEY = "worktime_snap_to_grid";
 
 export type EmployeePatch = Partial<{
   fullName: string;
