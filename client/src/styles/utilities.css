@@ -1,0 +1,47 @@
+/* Shared elevated surfaces */
+.login-card,
+.panel,
+.modal-card,
+.board-area {
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+}
+
+.login-card,
+.panel,
+.modal-card {
+  background: var(--panel);
+}
+
+/* Shared control baseline */
+.login-card input,
+.topbar-actions button,
+.mobile-menu-toggle,
+.panel input,
+.panel select,
+.panel button,
+.modal-close,
+.file-input-label,
+.name-input,
+.drag-handle,
+.metrics-grid input,
+.quick-load-buttons button {
+  border: 1px solid var(--border);
+  background: var(--button-bg);
+  color: var(--button-text);
+}
+
+/* Shared danger palette */
+.danger-button,
+.danger-icon-button {
+  border-color: #e79c9c !important;
+  background: #ffe6e6 !important;
+  color: #8f1f1f !important;
+}
+
+:root[data-theme="dark"] .danger-button,
+:root[data-theme="dark"] .danger-icon-button {
+  border-color: #8c4c4c !important;
+  background: #492525 !important;
+  color: #ffd7d7 !important;
+}

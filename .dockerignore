@@ -1,9 +1,5 @@
-Dockerfile
-.dockerignore
 node_modules
-npm-debug.log
-README.md
-.next
+client/dist
 .git
-/prisma/main.sqlite
-/private/
+.gitignore
+data

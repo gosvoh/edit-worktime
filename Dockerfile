@@ -1,68 +1,29 @@
-FROM node:20-alpine AS base
+FROM oven/bun:1 AS build
 
-# Install dependencies only when needed
-FROM base AS deps
-# Check https://github.com/nodejs/docker-node/tree/b4117f9333da4138b03a546ec926ef50a31506c3#nodealpine to understand why libc6-compat might be needed.
-RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
-# Install dependencies based on the preferred package manager
-COPY package.json ./
-RUN npm i
+COPY package.json bun.lock tsconfig.base.json ./
+RUN bun install --frozen-lockfile
 
+COPY client ./client
+COPY server ./server
 
-# Rebuild the source code only when needed
-FROM base AS builder
-WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
-COPY . .
+RUN bun run build:web
 
-# Next.js collects completely anonymous telemetry data about general usage.
-# Learn more here: https://nextjs.org/telemetry
-# Uncomment the following line in case you want to disable telemetry during the build.
-# ENV NEXT_TELEMETRY_DISABLED 1
+FROM oven/bun:1 AS runtime
 
-ARG DATABASE_URL
-ENV DATABASE_URL=$DATABASE_URL
-
-RUN npm run prisma
-
-RUN npm run build
-
-RUN mkdir -p /app/public
-
-# Production image, copy all the files and run next
-FROM base AS runner
 WORKDIR /app
 
-ENV NODE_ENV production
-# Uncomment the following line in case you want to disable telemetry during runtime.
-# ENV NEXT_TELEMETRY_DISABLED 1
+COPY server ./server
+COPY --from=build /app/client/dist ./client/dist
+COPY --from=build /app/client/public ./client/public
 
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
+RUN mkdir -p /app/data
 
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/prisma ./prisma
-
-# Set the correct permission for prerender cache
-RUN mkdir .next
-RUN chown nextjs:nodejs .next
-
-# Automatically leverage output traces to reduce image size
-# https://nextjs.org/docs/advanced-features/output-file-tracing
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
-
-USER nextjs
+ENV NODE_ENV=production
+ENV PORT=3000
+ENV CLIENT_DIST=/app/client/dist
 
 EXPOSE 3000
 
-ENV PORT 3000
-ENV HOSTNAME 0.0.0.0
-
-VOLUME /app/private
-
-# server.js is created by next build from the standalone output
-# https://nextjs.org/docs/pages/api-reference/next-config-js/output
-CMD node server.js
+CMD ["bun", "server/src/index.ts"]

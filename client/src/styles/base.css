@@ -1,0 +1,25 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  font-family: "Manrope", "Segoe UI", sans-serif;
+  color: var(--text-main);
+  background:
+    radial-gradient(circle at 10% 10%, var(--bg-spot-a) 0, transparent 40%),
+    radial-gradient(circle at 90% 12%, var(--bg-spot-b) 0, transparent 42%),
+    linear-gradient(135deg, var(--bg-soft), var(--bg-main));
+}
+
+button,
+input,
+select {
+  font: inherit;
+}

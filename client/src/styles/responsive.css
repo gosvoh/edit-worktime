@@ -1,0 +1,142 @@
+@media (max-width: 1220px) {
+  .content {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+    padding: 8px;
+  }
+
+  .sidebar {
+    max-height: 48vh;
+  }
+
+  .topbar {
+    padding: 12px 14px;
+  }
+
+  .board-top-controls {
+    align-items: flex-start;
+  }
+
+  .modal-backdrop {
+    padding: 10px;
+  }
+
+  .modal-card.wide {
+    width: 100%;
+  }
+}
+
+@media (max-width: 720px) {
+  .topbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .topbar-main {
+    width: 100%;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .topbar-main > div {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .topbar p {
+    display: none;
+  }
+
+  .mobile-menu-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .topbar-actions {
+    display: none;
+    width: 100%;
+    justify-content: flex-start;
+    overflow-x: visible;
+  }
+
+  .topbar-actions.open {
+    display: flex;
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    max-height: 40vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-right: 0;
+    gap: 8px;
+  }
+
+  .topbar-actions.open button:not(.icon-button) {
+    flex: 1 1 100%;
+    white-space: normal;
+  }
+
+  .topbar-actions.open .icon-button {
+    flex: 0 0 42px;
+    width: 42px;
+    height: 42px;
+  }
+
+  .topbar h1 {
+    font-size: 20px;
+  }
+
+  .board-top-controls {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .board-help-inline {
+    font-size: 11px;
+    width: 100%;
+  }
+
+  .board-options {
+    width: 100%;
+  }
+
+  .legend {
+    display: none;
+  }
+
+  .employee-card {
+    width: 270px;
+  }
+
+  .board-area {
+    padding: 6px;
+  }
+
+  .panel {
+    padding: 10px;
+  }
+
+  .modal-header h2 {
+    font-size: 17px;
+  }
+
+  .modal-content {
+    padding: 10px;
+  }
+
+  .modal-panels {
+    grid-template-columns: 1fr;
+  }
+
+  .user-row-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .password-reset {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,265 @@
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type PointerEvent as ReactPointerEvent,
+  type SetStateAction
+} from "react";
+import { GRID_SIZE, MAX_COORD, clamp, type EmployeePatch } from "../lib/board";
+import type { Employee, UserRole } from "../types";
+
+type DragState = {
+  employeeId: number;
+  offsetX: number;
+  offsetY: number;
+  pointerId: number;
+};
+
+type UseBoardInteractionsParams = {
+  userRole: UserRole | null | undefined;
+  zoom: number;
+  snapToGrid: boolean;
+  setEmployees: Dispatch<SetStateAction<Employee[]>>;
+  patchEmployee: (employeeId: number, patch: EmployeePatch) => Promise<void>;
+};
+
+export function useBoardInteractions({
+  userRole,
+  zoom,
+  snapToGrid,
+  setEmployees,
+  patchEmployee
+}: UseBoardInteractionsParams) {
+  const [dragState, setDragState] = useState<DragState | null>(null);
+  const [isSpacePressed, setIsSpacePressed] = useState(false);
+  const [isPanning, setIsPanning] = useState(false);
+
+  const dragPositionRef = useRef<{ x: number; y: number } | null>(null);
+  const canvasRef = useRef<HTMLDivElement | null>(null);
+  const boardScrollRef = useRef<HTMLDivElement | null>(null);
+  const panStateRef = useRef<{
+    startClientX: number;
+    startClientY: number;
+    startScrollLeft: number;
+    startScrollTop: number;
+    pointerId: number;
+  } | null>(null);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.code === "Space") {
+        const activeTag = document.activeElement?.tagName;
+        if (activeTag === "INPUT" || activeTag === "TEXTAREA" || activeTag === "SELECT") {
+          return;
+        }
+        event.preventDefault();
+        setIsSpacePressed(true);
+      }
+    };
+
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (event.code === "Space") {
+        setIsSpacePressed(false);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+    };
+  }, []);
+
+  const toCanvasPoint = useCallback(
+    (clientX: number, clientY: number) => {
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect) {
+        return { x: 0, y: 0 };
+      }
+      return {
+        x: (clientX - rect.left) / zoom,
+        y: (clientY - rect.top) / zoom
+      };
+    },
+    [zoom]
+  );
+
+  const onBoardPointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (dragState) {
+      return;
+    }
+
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+    if (target.closest(".drag-handle")) {
+      return;
+    }
+    if (event.button === 0 && target.closest("input,button,select,textarea,label")) {
+      return;
+    }
+
+    const isPrimaryButton = event.button === 0;
+    const canPanByMouse = event.pointerType === "mouse" && (event.button === 1 || event.button === 2);
+    const canPanBySpace = event.pointerType === "mouse" && isPrimaryButton && isSpacePressed;
+    const canPanByLeftDragOnEmptyBoard = event.button === 0 && target.closest(".employee-card") === null;
+    const canPanByTouch = event.pointerType === "touch" && isPrimaryButton;
+
+    if (!canPanByMouse && !canPanBySpace && !canPanByLeftDragOnEmptyBoard && !canPanByTouch) {
+      return;
+    }
+
+    const container = boardScrollRef.current;
+    if (!container) {
+      return;
+    }
+
+    event.preventDefault();
+    if (event.currentTarget.setPointerCapture) {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+    panStateRef.current = {
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      startScrollLeft: container.scrollLeft,
+      startScrollTop: container.scrollTop,
+      pointerId: event.pointerId
+    };
+    setIsPanning(true);
+  }, [dragState, isSpacePressed]);
+
+  useEffect(() => {
+    if (!isPanning) {
+      return;
+    }
+
+    const onMove = (event: PointerEvent) => {
+      const state = panStateRef.current;
+      const container = boardScrollRef.current;
+      if (!state || !container) {
+        return;
+      }
+      if (event.pointerId !== state.pointerId) {
+        return;
+      }
+      const dx = event.clientX - state.startClientX;
+      const dy = event.clientY - state.startClientY;
+      container.scrollLeft = state.startScrollLeft - dx;
+      container.scrollTop = state.startScrollTop - dy;
+    };
+
+    const onUp = (event: PointerEvent) => {
+      const state = panStateRef.current;
+      if (!state || event.pointerId !== state.pointerId) {
+        return;
+      }
+      panStateRef.current = null;
+      setIsPanning(false);
+    };
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+  }, [isPanning]);
+
+  const onCardPointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>, employee: Employee) => {
+      if (userRole !== "admin") {
+        return;
+      }
+      if (event.button !== 0) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.currentTarget.setPointerCapture) {
+        event.currentTarget.setPointerCapture(event.pointerId);
+      }
+      const point = toCanvasPoint(event.clientX, event.clientY);
+      setDragState({
+        employeeId: employee.id,
+        offsetX: point.x - employee.x,
+        offsetY: point.y - employee.y,
+        pointerId: event.pointerId
+      });
+      dragPositionRef.current = { x: employee.x, y: employee.y };
+    },
+    [userRole, toCanvasPoint]
+  );
+
+  useEffect(() => {
+    if (!dragState || userRole !== "admin") {
+      return;
+    }
+
+    const onMove = (event: PointerEvent) => {
+      if (event.pointerId !== dragState.pointerId) {
+        return;
+      }
+      const point = toCanvasPoint(event.clientX, event.clientY);
+      const rawX = point.x - dragState.offsetX;
+      const rawY = point.y - dragState.offsetY;
+      const nextX = clamp(
+        snapToGrid ? Math.round(rawX / GRID_SIZE) * GRID_SIZE : rawX,
+        0,
+        MAX_COORD
+      );
+      const nextY = clamp(
+        snapToGrid ? Math.round(rawY / GRID_SIZE) * GRID_SIZE : rawY,
+        0,
+        MAX_COORD
+      );
+      dragPositionRef.current = { x: nextX, y: nextY };
+
+      setEmployees((prev) =>
+        prev.map((employee) =>
+          employee.id === dragState.employeeId ? { ...employee, x: nextX, y: nextY } : employee
+        )
+      );
+    };
+
+    const onUp = (event: PointerEvent) => {
+      if (event.pointerId !== dragState.pointerId) {
+        return;
+      }
+      const current = dragPositionRef.current;
+      const employeeId = dragState.employeeId;
+      setDragState(null);
+      dragPositionRef.current = null;
+      if (current) {
+        void patchEmployee(employeeId, { x: current.x, y: current.y });
+      }
+    };
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+  }, [dragState, userRole, patchEmployee, setEmployees, toCanvasPoint, snapToGrid]);
+
+  return {
+    dragState,
+    isSpacePressed,
+    isPanning,
+    canvasRef,
+    boardScrollRef,
+    onBoardPointerDown,
+    onCardPointerDown
+  };
+}

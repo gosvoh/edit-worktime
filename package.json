@@ -1,52 +1,28 @@
 {
-  "name": "package.json",
-  "version": "0.3.5",
+  "name": "worktime-board",
+  "version": "0.4.6",
   "private": true,
-  "author": {
-    "name": "Aleksey Vokhmin",
-    "email": "vohmina2011@yandex.ru"
-  },
-  "license": "Apache-2.0",
+  "type": "module",
   "scripts": {
-    "dev": "next dev",
-    "prisma": "npm exec prisma migrate dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint"
+    "dev:api": "bun --watch server/src/index.ts",
+    "dev:web": "bunx vite --config client/vite.config.ts",
+    "dev": "bunx concurrently -n api,web -c green,blue \"bun run dev:api\" \"bun run dev:web\"",
+    "build:web": "bunx vite build --config client/vite.config.ts",
+    "start": "bun server/src/index.ts",
+    "typecheck": "bunx tsc -p server/tsconfig.json --noEmit && bunx tsc -p client/tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@ant-design/icons": "latest",
-    "@ant-design/nextjs-registry": "latest",
-    "@auth/prisma-adapter": "^2.0.0",
-    "@excalidraw/excalidraw": "latest",
-    "@prisma/client": "^5.13.0",
-    "@react-hookz/web": "latest",
-    "antd": "latest",
-    "bcrypt": "^5.1.1",
-    "class-variance-authority": "latest",
-    "clsx": "latest",
-    "lucide-react": "latest",
-    "next": "latest",
-    "next-auth": "^5.0.0-beta.17",
-    "react": "latest",
-    "react-dom": "latest",
-    "tailwind-merge": "latest",
-    "tailwindcss-animate": "latest",
-    "typescript": "latest",
-    "use-debounce": "latest",
-    "uuid": "latest",
-    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.2/xlsx-0.20.2.tgz"
+    "lucide-react": "^0.469.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
-    "@types/bcrypt": "^5.0.2",
-    "@types/node": "latest",
-    "@types/react": "latest",
-    "@types/react-dom": "latest",
-    "@types/uuid": "latest",
-    "eslint": "latest",
-    "eslint-config-next": "latest",
-    "postcss": "latest",
-    "prisma": "^5.13.0",
-    "tailwindcss": "latest"
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.2",
+    "bun-types": "^1.2.0",
+    "concurrently": "^9.2.1",
+    "typescript": "^5.6.2",
+    "vite": "^5.4.10"
   }
 }

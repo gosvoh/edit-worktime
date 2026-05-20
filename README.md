@@ -1,8 +1,108 @@
-<div alt style="text-align: center; transform: scale(.5);">
-	<picture>
-		<source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/tldraw/tldraw/main/assets/github-hero-dark-draw.png" />
-		<img alt="tldraw" src="https://raw.githubusercontent.com/tldraw/tldraw/main/assets/github-hero-light-draw.png" />
-	</picture>
-</div>
+# Worktime Board
 
-This repo contains a very basic example of how to use [tldraw](https://github.com/tldraw/tldraw) in a [Next.js](https://nextjs.org/) app using the src directory and App router.
+Веб-приложение для визуального учета текущей нагрузки сотрудников с учетом ставки и месячной нормы часов.
+
+## Что реализовано
+
+- Интерактивная whiteboard-доска с карточками сотрудников и перетаскиванием.
+- Удобная навигация по доске мышью:
+  - левая кнопка мыши по пустому полю + перетаскивание;
+  - средняя кнопка мыши + перетаскивание;
+  - либо `Space` + левая кнопка мыши;
+  - на телефоне/планшете: перетаскивание одним пальцем.
+- Масштабирование: ползунок или `Ctrl + колесо`.
+- Опция «Привязка к сетке» для администратора при перетаскивании карточек.
+- Цветовая индикация состояния нагрузки:
+  - зеленый: норма;
+  - желтый: близко к лимиту;
+  - оранжевый: лимит;
+  - красный: перегруз.
+- Настраиваемые параметры:
+  - базовое число часов на `1.0` ставку (по умолчанию `1500`);
+  - порог предупреждения (например, `0.9`).
+- Для сотрудника на карточке:
+  - ФИО;
+  - ставка (любой дробный/целый коэффициент: `0.1`, `0.25`, `0.5`, `1`, `2`, и т.д.);
+  - текущая нагрузка в часах;
+  - оплата за 1 ставку;
+  - индивидуальные часы на ставку (опционально).
+- Авторизация и роли:
+  - `admin` видит и редактирует всех;
+  - `employee` видит только свою карточку.
+- Сессии через `httpOnly` cookie (без хранения токена в `localStorage`).
+- Обновления в реальном времени через WebSocket (`/ws`): изменения, сделанные одним пользователем, автоматически подтягиваются у остальных.
+- Встроенная инструкция (по кнопке) и переключение светлой/тёмной темы.
+- Авто-расширяемое рабочее поле: доска растет по мере добавления/перемещения карточек.
+- Управление доступами из интерфейса админа:
+  - создание пользователей;
+  - включение/отключение учетной записи;
+  - сброс пароля.
+- Аудит действий в логах сервера (JSON): создание/изменение/удаление сотрудников и пользователей.
+- Импорт и экспорт данных (JSON) для администратора.
+- Данные хранятся в SQLite.
+
+## Демо-учетки
+
+- `admin / admin12345`
+- `employee1 / employee12345`
+
+Сразу после запуска рекомендуется сменить пароли.
+
+## Запуск через Docker
+
+```bash
+docker compose up --build
+```
+
+Приложение будет доступно на `http://localhost:3000`.
+
+> В текущем `docker-compose.yml` используется внешняя сеть `nginx`.
+> Если её нет, создайте один раз:
+> `docker network create nginx`
+
+- UI и API работают из одного контейнера и одного origin.
+- Frontend отдается сервером Bun как статика из `client/dist`.
+- API доступен на том же адресе через путь `/api` (например `http://localhost:3000/api/health`).
+
+## Запуск локально через bun
+
+Требуется Bun (1.2+).
+
+```bash
+bun install
+bun run dev
+```
+
+- API: `http://localhost:3000`
+- Frontend (Vite): `http://localhost:5173`
+
+## Быстрый smoke test авторизации
+
+После запуска API:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\smoke-auth.ps1
+```
+
+## Переменные окружения
+
+- `PORT` - порт API (по умолчанию `3000`)
+- `DB_PATH` - путь к SQLite-файлу (по умолчанию `./data/worktime.sqlite`)
+- `ADMIN_LOGIN`, `ADMIN_PASSWORD` - сид-админ при первом старте
+- `EMPLOYEE_LOGIN`, `EMPLOYEE_PASSWORD` - сид-пользователь сотрудника при первом старте
+- `SESSION_TTL_MS` - время жизни сессии в миллисекундах
+- `COOKIE_SECURE` - `true/false`, добавлять ли флаг `Secure` к cookie-сессии
+- `CORS_ORIGIN` - значение `Access-Control-Allow-Origin`
+- `CLIENT_DIST` - путь до собранного frontend
+- `AUDIT_LOG_TARGET` - куда писать аудит-логи: `console`, `file`, `both` (по умолчанию `console`)
+- `AUDIT_LOG_FILE` - путь к файлу аудита (по умолчанию `./data/audit.log`)
+- `VITE_API_URL` - базовый URL API для frontend (по умолчанию пусто, тогда используется текущий origin)
+
+См. шаблон переменных: `.env.example`.
+
+## Структура
+
+- `server/src/index.ts` - Bun API + авторизация + RBAC + раздача статического frontend
+- `server/src/db.ts` - схема и сиды SQLite
+- `client/src/App.tsx` - интерфейс whiteboard и админ-панель
+- `client/src/api.ts` - API-клиент
