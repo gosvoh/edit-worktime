@@ -1,9 +1,47 @@
 import type { SQLQueryBindings } from "bun:sqlite";
+import {
+  logEmployeeCardUpdated,
+  logEmployeeCreated,
+  logEmployeeDeleted,
+  type AuditFieldChange,
+  type EmployeeAuditSnapshot
+} from "../audit";
 import { db } from "../db";
 import { listEmployeesForUser, mapEmployeeRow } from "../employees";
 import { parseEmployeeId } from "../path-parsers";
 import { parsePositiveNumber, parseString } from "../validation";
 import { requireAdmin, type AuthedRouteContext } from "../api-types";
+
+type EmployeeForAudit = EmployeeAuditSnapshot;
+
+const EMPLOYEE_AUDIT_FIELDS: Array<keyof EmployeeForAudit> = [
+  "fullName",
+  "rate",
+  "currentLoadHours",
+  "payPerRate",
+  "hoursPerRate",
+  "x",
+  "y"
+];
+
+function collectEmployeeChanges(
+  previous: EmployeeForAudit,
+  current: EmployeeForAudit
+): Record<string, AuditFieldChange> {
+  const changes: Record<string, AuditFieldChange> = {};
+
+  for (const field of EMPLOYEE_AUDIT_FIELDS) {
+    if (previous[field] === current[field]) {
+      continue;
+    }
+    changes[field] = {
+      from: previous[field],
+      to: current[field]
+    };
+  }
+
+  return changes;
+}
 
 export async function handleEmployeeRoutes(
   context: AuthedRouteContext
@@ -81,6 +119,17 @@ export async function handleEmployeeRoutes(
         y: number;
         updatedAt: string;
       };
+
+      logEmployeeCreated(context.auth.user, {
+        id: result.id,
+        fullName: result.fullName,
+        rate: result.rate,
+        currentLoadHours: result.currentLoadHours,
+        payPerRate: result.payPerRate,
+        hoursPerRate: result.hoursPerRate,
+        x: result.x,
+        y: result.y
+      });
 
       deps.broadcastRefresh("employee_created");
       return deps.json(mapEmployeeRow(result), 201);
@@ -160,6 +209,29 @@ export async function handleEmployeeRoutes(
       return deps.error(400, "Нет данных для обновления.");
     }
 
+    const previous = db
+      .query(
+        `
+        SELECT
+          id,
+          full_name AS fullName,
+          rate,
+          current_load_hours AS currentLoadHours,
+          pay_per_rate AS payPerRate,
+          hours_per_rate AS hoursPerRate,
+          x,
+          y
+        FROM employees
+        WHERE id = ?
+        LIMIT 1
+        `
+      )
+      .get(employeeId) as EmployeeForAudit | null;
+
+    if (!previous) {
+      return deps.error(404, "Сотрудник не найден.");
+    }
+
     updates.push("updated_at = CURRENT_TIMESTAMP");
     values.push(employeeId);
 
@@ -197,6 +269,14 @@ export async function handleEmployeeRoutes(
       return deps.error(404, "Сотрудник не найден.");
     }
 
+    const changes = collectEmployeeChanges(previous, result);
+    logEmployeeCardUpdated({
+      actor: context.auth.user,
+      employeeId: result.id,
+      employeeFullName: result.fullName,
+      changes
+    });
+
     deps.broadcastRefresh("employee_updated");
     return deps.json(mapEmployeeRow(result));
   }
@@ -226,12 +306,28 @@ export async function handleEmployeeRoutes(
     }
 
     const deleted = db
-      .query("DELETE FROM employees WHERE id = ? RETURNING id, full_name AS fullName")
-      .get(employeeId) as { id: number; fullName: string } | null;
+      .query(
+        `
+        DELETE FROM employees
+        WHERE id = ?
+        RETURNING
+          id,
+          full_name AS fullName,
+          rate,
+          current_load_hours AS currentLoadHours,
+          pay_per_rate AS payPerRate,
+          hours_per_rate AS hoursPerRate,
+          x,
+          y
+        `
+      )
+      .get(employeeId) as EmployeeForAudit | null;
 
     if (!deleted) {
       return deps.error(404, "Сотрудник не найден.");
     }
+
+    logEmployeeDeleted(context.auth.user, deleted);
 
     deps.broadcastRefresh("employee_deleted");
     return deps.json({ ok: true, deleted });

@@ -1,4 +1,12 @@
 import type { SQLQueryBindings } from "bun:sqlite";
+import {
+  logUserCreated,
+  logUserDeleted,
+  logUserUpdated,
+  type AuditChange,
+  type AuditFieldChange,
+  type UserAuditSnapshot
+} from "../audit";
 import { db } from "../db";
 import { parseUserId } from "../path-parsers";
 import type { UserRole } from "../types";
@@ -14,6 +22,58 @@ type UserSummaryRow = {
   isActive: number;
   employeeName: string | null;
 };
+
+type UserForAuditRow = {
+  id: number;
+  login: string;
+  fullName: string;
+  role: UserRole;
+  employeeId: number | null;
+  isActive: number;
+};
+
+const USER_AUDIT_FIELDS: Array<keyof UserAuditSnapshot> = [
+  "login",
+  "fullName",
+  "role",
+  "employeeId",
+  "isActive"
+];
+
+function toUserAuditSnapshot(row: UserForAuditRow | UserSummaryRow): UserAuditSnapshot {
+  return {
+    id: row.id,
+    login: row.login,
+    fullName: row.fullName,
+    role: row.role,
+    employeeId: row.employeeId,
+    isActive: Boolean(row.isActive)
+  };
+}
+
+function collectUserChanges(
+  previous: UserAuditSnapshot,
+  current: UserAuditSnapshot,
+  passwordChanged: boolean
+): Record<string, AuditChange> {
+  const changes: Record<string, AuditChange> = {};
+
+  for (const field of USER_AUDIT_FIELDS) {
+    if (previous[field] === current[field]) {
+      continue;
+    }
+    changes[field] = {
+      from: previous[field],
+      to: current[field]
+    } satisfies AuditFieldChange;
+  }
+
+  if (passwordChanged) {
+    changes.password = { changed: true };
+  }
+
+  return changes;
+}
 
 export async function handleUserRoutes(
   context: AuthedRouteContext
@@ -129,7 +189,13 @@ export async function handleUserRoutes(
           (SELECT full_name FROM employees WHERE id = employee_id) AS employeeName
         `
       )
-      .get(login, fullName, passwordHash, role, employeeId);
+      .get(login, fullName, passwordHash, role, employeeId) as UserSummaryRow | null;
+
+    if (!created) {
+      return deps.error(500, "Не удалось создать пользователя.");
+    }
+
+    logUserCreated(auth.user, toUserAuditSnapshot(created));
 
     deps.broadcastRefresh("user_created");
     return deps.json(created, 201);
@@ -145,13 +211,19 @@ export async function handleUserRoutes(
     const targetUser = db
       .query(
         `
-        SELECT id, role
+        SELECT
+          id,
+          login,
+          full_name AS fullName,
+          role,
+          employee_id AS employeeId,
+          is_active AS isActive
         FROM users
         WHERE id = ?
         LIMIT 1
         `
       )
-      .get(userId) as { id: number; role: UserRole } | null;
+      .get(userId) as UserForAuditRow | null;
 
     if (!targetUser) {
       return deps.error(404, "Пользователь не найден.");
@@ -169,6 +241,7 @@ export async function handleUserRoutes(
 
     const updates: string[] = [];
     const values: SQLQueryBindings[] = [];
+    let passwordChanged = false;
 
     if (typeof body.isActive !== "undefined") {
       if (typeof body.isActive !== "boolean") {
@@ -187,6 +260,7 @@ export async function handleUserRoutes(
         const hash = await Bun.password.hash(password);
         updates.push("password_hash = ?");
         values.push(hash);
+        passwordChanged = true;
       } catch (err) {
         return deps.error(400, (err as Error).message);
       }
@@ -261,6 +335,22 @@ export async function handleUserRoutes(
       return deps.error(404, "Пользователь не найден.");
     }
 
+    const changes = collectUserChanges(
+      toUserAuditSnapshot(targetUser),
+      toUserAuditSnapshot(updated),
+      passwordChanged
+    );
+    logUserUpdated(
+      auth.user,
+      {
+        id: updated.id,
+        login: updated.login,
+        fullName: updated.fullName,
+        role: updated.role
+      },
+      changes
+    );
+
     deps.broadcastRefresh("user_updated");
     return deps.json(updated);
   }
@@ -275,6 +365,27 @@ export async function handleUserRoutes(
       return deps.error(400, "Нельзя удалить текущего пользователя.");
     }
 
+    const targetUser = db
+      .query(
+        `
+        SELECT
+          id,
+          login,
+          full_name AS fullName,
+          role,
+          employee_id AS employeeId,
+          is_active AS isActive
+        FROM users
+        WHERE id = ?
+        LIMIT 1
+        `
+      )
+      .get(userId) as UserForAuditRow | null;
+
+    if (!targetUser) {
+      return deps.error(404, "Пользователь не найден.");
+    }
+
     db.prepare("DELETE FROM sessions WHERE user_id = ?").run(userId);
 
     const deleted = db
@@ -282,28 +393,28 @@ export async function handleUserRoutes(
         `
         DELETE FROM users
         WHERE id = ?
-        RETURNING
-          id,
-          login,
-          full_name AS fullName,
-          role,
-          employee_id AS employeeId
+        RETURNING id
         `
       )
-      .get(userId) as {
-      id: number;
-      login: string;
-      fullName: string;
-      role: UserRole;
-      employeeId: number | null;
-    } | null;
+      .get(userId) as { id: number } | null;
 
     if (!deleted) {
       return deps.error(404, "Пользователь не найден.");
     }
 
+    logUserDeleted(auth.user, toUserAuditSnapshot(targetUser));
+
     deps.broadcastRefresh("user_deleted");
-    return deps.json({ ok: true, deleted });
+    return deps.json({
+      ok: true,
+      deleted: {
+        id: targetUser.id,
+        login: targetUser.login,
+        fullName: targetUser.fullName,
+        role: targetUser.role,
+        employeeId: targetUser.employeeId
+      }
+    });
   }
 
   return null;
