@@ -16,8 +16,10 @@ services:
       EMPLOYEE_PASSWORD: "employee12345"
       COOKIE_SECURE: "false"
     volumes:
-      - ./data:/app/data
+      - data:/app/data
     restart: unless-stopped
+    networks:
+      - nginx
 
 volumes:
   data:
