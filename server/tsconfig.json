@@ -3,6 +3,7 @@
   "compilerOptions": {
     "lib": ["ES2023", "DOM"],
     "types": ["bun-types"],
+    "rootDir": "src",
     "outDir": "dist"
   },
   "include": ["src/**/*.ts"]
